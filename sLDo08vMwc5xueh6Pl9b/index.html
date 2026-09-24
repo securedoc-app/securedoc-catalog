@@ -1,0 +1,1251 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Condominio</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
+  <style>
+    body { padding-top: 60px; background-color: #f8f9fa; }
+    .navbar { box-shadow: 0 2px 4px rgba(0,0,0,.1); }
+    #app-container { min-height: 80vh; background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 0 15px rgba(0,0,0,0.05); }
+    
+    .cursor-pointer { cursor: pointer; }
+    
+    .bar-chart { fill: #0d6efd; }
+    .bar-chart:hover { fill: #0b5ed7; }
+    .line-chart { fill: none; stroke: #dc3545; stroke-width: 2; }
+    .point-chart { fill: #dc3545; }
+
+    /* Estilos específicos para la Tabla de Presupuestos */
+    .th-dark { background-color: #2c3e50 !important; color: white !important; border-color: #2c3e50 !important; }
+    .tr-gastos td { background-color: #f8f9fa !important; font-weight: bold; border-top: 2px solid #2c3e50 !important; color: black !important; }
+    .tr-ingreso td { color: #198754 !important; }
+    .tr-tot-ingresos td { background-color: #e8f5e9 !important; color: #198754 !important; font-weight: bold; border-bottom: 2px solid #198754 !important; }
+    .tr-neto td { background-color: #f8ecec !important; color: #dc3545 !important; font-weight: bold; border-bottom: 2px solid #2c3e50 !important; }
+    .tr-tot-apto td { background-color: #aeb6bf !important; font-weight: bold; font-size: 1.1em; }
+    .tr-tot-apto td:first-child { color: white !important; }
+    .tr-tot-apto td.monto-red { color: #dc3545 !important; }
+    
+    @media print {
+      body { padding-top: 0; background-color: white; }
+      .navbar, .d-print-none, .print-hide { display: none !important; }
+      #app-container { box-shadow: none; padding: 0; }
+      
+      /* Forzar impresión de colores de fondo en Chrome/Safari/Edge */
+      * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+      
+      .table th { background-color: #f8f9fa !important; color: #000 !important; }
+      .th-dark { background-color: #2c3e50 !important; color: white !important; }
+      .tr-gastos td { background-color: #f8f9fa !important; color: black !important; }
+      .tr-ingreso td { color: #198754 !important; }
+      .tr-tot-ingresos td { background-color: #e8f5e9 !important; color: #198754 !important; }
+      .tr-neto td { background-color: #f8ecec !important; color: #dc3545 !important; }
+      .tr-tot-apto td { background-color: #aeb6bf !important; }
+      .tr-tot-apto td:first-child { color: white !important; }
+      .tr-tot-apto td.monto-red { color: #dc3545 !important; }
+      .deuda-alta { font-weight: bold; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top d-print-none">
+    <div class="container-fluid">
+      <span class="navbar-brand mb-0 h1 cursor-pointer" id="nav-brand">🏠 <span id="brand-text">CondoApp</span></span>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+          <li class="nav-item"><a class="nav-link cursor-pointer" id="nav-dashboard">Dashboard</a></li>
+          <li class="nav-item"><a class="nav-link cursor-pointer" id="nav-directorio">Directorio</a></li>
+          <li class="nav-item"><a class="nav-link cursor-pointer" id="nav-conceptos">Conceptos</a></li>
+          <li class="nav-item"><a class="nav-link cursor-pointer" id="nav-presupuestos">Presupuestos</a></li>
+          <li class="nav-item"><a class="nav-link cursor-pointer" id="nav-cargos">Cargos Esp.</a></li>
+          <li class="nav-item"><a class="nav-link cursor-pointer" id="nav-caja">Caja</a></li>
+          <li class="nav-item"><a class="nav-link cursor-pointer" id="nav-reportes">Reportes</a></li>
+          <li class="nav-item"><a class="nav-link cursor-pointer" id="nav-perfil">Perfil</a></li>
+        </ul>
+        <div class="d-flex align-items-center">
+            <span class="text-light me-3 small" id="tasa-del-dia">Cargando tasa...</span>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container mt-4">
+    <div id="app-container">
+      <div class="text-center my-5">
+        <div class="spinner-border text-primary" role="status"></div>
+        <h4 class="mt-3 text-muted">Iniciando sistema...</h4>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const Utils = {
+      crearElemento(etiqueta, atributos = {}) {
+        const el = document.createElement(etiqueta);
+        for (const [key, value] of Object.entries(atributos)) {
+          el.setAttribute(key, value);
+        }
+        return el;
+      },
+      crearElementoSVG(etiqueta, atributos = {}) {
+        const el = document.createElementNS('http://www.w3.org/2000/svg', etiqueta);
+        for (const [key, value] of Object.entries(atributos)) {
+          el.setAttribute(key, value);
+        }
+        return el;
+      },
+      mostrarError(contenedor, mensaje, reintentarCallback = null) {
+        contenedor.replaceChildren();
+        const alert = this.crearElemento('div', { class: 'alert alert-danger shadow-sm' });
+        const h4 = this.crearElemento('h4', { class: 'alert-heading' }); h4.textContent = 'Error'; alert.appendChild(h4);
+        const p = this.crearElemento('p'); p.textContent = mensaje; alert.appendChild(p);
+        if (reintentarCallback) {
+          const btn = this.crearElemento('button', { class: 'btn btn-outline-danger mt-3' });
+          btn.textContent = 'Reintentar'; btn.addEventListener('click', reintentarCallback); alert.appendChild(btn);
+        }
+        contenedor.appendChild(alert);
+      },
+      mostrarCargando(contenedor) {
+        contenedor.replaceChildren();
+        const div = this.crearElemento('div', { class: 'text-center my-5' });
+        const spinner = this.crearElemento('div', { class: 'spinner-border text-primary', role: 'status' });
+        div.appendChild(spinner); contenedor.appendChild(div);
+      },
+      async consultarTasaBCV(fechaYYYYMMDD) {
+        const fechaFormat = fechaYYYYMMDD.replace(/-/g, '/');
+        try {
+          const url = `https://ve.dolarapi.com/v1/historicos/dolares/oficial/${fechaFormat}`;
+          const response = await fetch(url);
+          if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+          const data = await response.json();
+          if (data && data.promedio) return parseFloat(data.promedio);
+          throw new Error('Respuesta mal formada');
+        } catch (error) {
+          console.warn('Error consultando DolarAPI:', error);
+          throw error;
+        }
+      },
+      obtenerFechaHoyISO() {
+          return new Date().toISOString().split('T')[0];
+      },
+      ordenarApartamentos(aptos) {
+          aptos.sort((a, b) => (a.orden ?? 99999) - (b.orden ?? 99999));
+      },
+      async cargarPerfil() {
+        const docs = await SecureDoc.data.list({ where: [['esPerfil', '==', true]] });
+        return docs.length > 0 ? docs[0] : null;
+      },
+      generarCabeceraReporte(perfil, tituloPrincipal, subtituloExtra = '') {
+        const cabeceraDoc = this.crearElemento('div', { class: 'd-flex justify-content-between align-items-center mb-4 border-bottom pb-3' });
+        const divInfo = this.crearElemento('div', { class: 'text-start' });
+        
+        const tituloCondo = this.crearElemento('h2', { class: 'text-uppercase fw-bold mb-1 text-primary' });
+        tituloCondo.textContent = perfil?.nombreCondominio || 'Condominio';
+        divInfo.appendChild(tituloCondo);
+
+        const subTit = this.crearElemento('h4', { class: 'mb-2' });
+        subTit.textContent = tituloPrincipal;
+        divInfo.appendChild(subTit);
+
+        if (perfil?.encargado) {
+            const enc = this.crearElemento('p', { class: 'mb-0 fw-bold text-dark' }); 
+            enc.textContent = `Encargado: ${perfil.encargado}`;
+            divInfo.appendChild(enc);
+        }
+        
+        if (subtituloExtra) {
+            const extra = this.crearElemento('p', { class: 'text-muted mb-0 small' });
+            extra.textContent = subtituloExtra;
+            divInfo.appendChild(extra);
+        }
+        cabeceraDoc.appendChild(divInfo);
+
+        if (perfil?.logo) {
+            const img = this.crearElemento('img', { src: perfil.logo, style: 'max-height: 90px; max-width: 200px; object-fit: contain;' });
+            cabeceraDoc.appendChild(img);
+        }
+        return cabeceraDoc;
+      }
+    };
+
+    // 0. PERFIL
+    const Perfil = {
+      perfilId: null,
+      logoBase64: '',
+
+      async render(contenedor) {
+        Utils.mostrarCargando(contenedor);
+        try {
+          const perfil = await Utils.cargarPerfil();
+          
+          if (perfil) {
+             this.perfilId = perfil.id;
+             this.logoBase64 = perfil.logo || '';
+          } else {
+             this.perfilId = null;
+             this.logoBase64 = '';
+          }
+
+          contenedor.replaceChildren();
+
+          const header = Utils.crearElemento('div', { class: 'mb-4' });
+          const titulo = Utils.crearElemento('h3'); titulo.textContent = 'Perfil del Condominio';
+          const subtitulo = Utils.crearElemento('p', { class: 'text-muted' }); subtitulo.textContent = 'Configure los datos que aparecerán en los reportes y en la barra superior.';
+          header.appendChild(titulo); header.appendChild(subtitulo); contenedor.appendChild(header);
+
+          const card = Utils.crearElemento('div', { class: 'card shadow-sm mx-auto', style: 'max-width: 600px;' });
+          const cBody = Utils.crearElemento('div', { class: 'card-body p-4' });
+          
+          const form = Utils.crearElemento('form');
+          form.addEventListener('submit', (e) => this.guardar(e, contenedor));
+
+          const dNom = Utils.crearElemento('div', { class: 'mb-3' });
+          const lNom = Utils.crearElemento('label', { class: 'form-label fw-bold' }); lNom.textContent = 'Nombre del Condominio';
+          this.iNom = Utils.crearElemento('input', { type: 'text', class: 'form-control', required: 'true', placeholder: 'Ej. Residencias El Sol' });
+          if(perfil) this.iNom.value = perfil.nombreCondominio || '';
+          dNom.appendChild(lNom); dNom.appendChild(this.iNom); form.appendChild(dNom);
+
+          const dEnc = Utils.crearElemento('div', { class: 'mb-3' });
+          const lEnc = Utils.crearElemento('label', { class: 'form-label fw-bold' }); lEnc.textContent = 'Encargado / Administrador';
+          this.iEnc = Utils.crearElemento('input', { type: 'text', class: 'form-control', placeholder: 'Ej. Junta de Condominio' });
+          if(perfil) this.iEnc.value = perfil.encargado || '';
+          dEnc.appendChild(lEnc); dEnc.appendChild(this.iEnc); form.appendChild(dEnc);
+
+          const dLogo = Utils.crearElemento('div', { class: 'mb-4' });
+          const lLogo = Utils.crearElemento('label', { class: 'form-label fw-bold' }); lLogo.textContent = 'Logo (Imagen)';
+          const iLogo = Utils.crearElemento('input', { type: 'file', class: 'form-control', accept: 'image/png, image/jpeg, image/jpg' });
+          
+          this.imgPreview = Utils.crearElemento('img', { style: 'max-height: 100px; margin-top: 10px; object-fit: contain;' });
+          if (this.logoBase64) {
+            this.imgPreview.src = this.logoBase64;
+          } else {
+            this.imgPreview.classList.add('d-none');
+          }
+
+          iLogo.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+              const imgObj = new Image();
+              imgObj.onload = () => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                const MAX_WIDTH = 250; const MAX_HEIGHT = 250;
+                let w = imgObj.width, h = imgObj.height;
+
+                if (w > h) { if (w > MAX_WIDTH) { h *= MAX_WIDTH / w; w = MAX_WIDTH; } } 
+                else { if (h > MAX_HEIGHT) { w *= MAX_HEIGHT / h; h = MAX_HEIGHT; } }
+                
+                canvas.width = w; canvas.height = h;
+                ctx.drawImage(imgObj, 0, 0, w, h);
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                
+                if (dataUrl.length > 55000) {
+                   alert("La imagen seleccionada sigue siendo muy pesada para almacenar. Por favor, intente con un logo más simple.");
+                   iLogo.value = '';
+                   return;
+                }
+                
+                this.logoBase64 = dataUrl;
+                this.imgPreview.src = dataUrl;
+                this.imgPreview.classList.remove('d-none');
+              };
+              imgObj.src = ev.target.result;
+            };
+            reader.readAsDataURL(file);
+          });
+          
+          const helpTxt = Utils.crearElemento('small', { class: 'text-muted d-block mt-1' });
+          helpTxt.textContent = 'Se recomienda una imagen pequeña/cuadrada (se redimensionará automáticamente).';
+
+          dLogo.appendChild(lLogo); dLogo.appendChild(iLogo); dLogo.appendChild(helpTxt); dLogo.appendChild(this.imgPreview); form.appendChild(dLogo);
+
+          const btnG = Utils.crearElemento('button', { type: 'submit', class: 'btn btn-primary w-100 btn-lg' });
+          btnG.textContent = 'Guardar Perfil';
+          this.btnG = btnG;
+          form.appendChild(btnG);
+
+          cBody.appendChild(form); card.appendChild(cBody); contenedor.appendChild(card);
+        } catch(e) {
+          console.error(e); Utils.mostrarError(contenedor, "No se pudo cargar el perfil.");
+        }
+      },
+
+      async guardar(e, contenedor) {
+        e.preventDefault();
+        this.btnG.disabled = true;
+        this.btnG.textContent = 'Guardando...';
+
+        const data = {
+          esPerfil: true,
+          nombreCondominio: this.iNom.value.trim(),
+          encargado: this.iEnc.value.trim(),
+          logo: this.logoBase64
+        };
+
+        try {
+          if (this.perfilId) await SecureDoc.data.update(this.perfilId, data);
+          else await SecureDoc.data.add(data);
+          
+          const bText = document.getElementById('brand-text');
+          if (bText) bText.textContent = data.nombreCondominio || 'CondoApp';
+          
+          alert('Perfil guardado exitosamente.');
+          this.render(contenedor);
+        } catch (err) {
+          console.error(err); alert('Error al guardar el perfil.'); this.btnG.disabled = false; this.btnG.textContent = 'Guardar Perfil';
+        }
+      }
+    };
+
+    // 1. DASHBOARD
+    const Dashboard = {
+      async render(contenedor) {
+        Utils.mostrarCargando(contenedor);
+        try {
+          const apartamentos = await SecureDoc.data.list({ where: [['numero', '!=', '']] });
+          Utils.ordenarApartamentos(apartamentos);
+          
+          let deudaTotal = 0; const deudores = [];
+          apartamentos.forEach(apt => {
+            const deuda = parseFloat(apt.deudaActual) || 0;
+            deudaTotal += deuda; 
+            if (deuda > 0) deudores.push({ numero: apt.numero, propietario: apt.propietario, deuda: deuda });
+          });
+          deudores.sort((a, b) => b.deuda - a.deuda);
+          contenedor.replaceChildren();
+
+          const filaCabecera = Utils.crearElemento('div', { class: 'row mb-4' });
+          const colDeuda = Utils.crearElemento('div', { class: 'col-md-4' });
+          const tarjetaDeuda = Utils.crearElemento('div', { class: 'card bg-primary text-white shadow-sm' });
+          const cuerpoTarjeta = Utils.crearElemento('div', { class: 'card-body text-center' });
+          const titulo = Utils.crearElemento('h5', { class: 'card-title text-uppercase mb-1' }); titulo.textContent = 'Deuda Total por Cobrar';
+          const monto = Utils.crearElemento('h2', { class: 'card-text mb-0 fw-bold' }); monto.textContent = `$${deudaTotal.toFixed(2)}`;
+          cuerpoTarjeta.appendChild(titulo); cuerpoTarjeta.appendChild(monto); tarjetaDeuda.appendChild(cuerpoTarjeta); colDeuda.appendChild(tarjetaDeuda); filaCabecera.appendChild(colDeuda); contenedor.appendChild(filaCabecera);
+
+          if (deudores.length > 0) this.construirGrafico(contenedor, deudores);
+          else {
+            const msg = Utils.crearElemento('div', { class: 'alert alert-success mt-4 shadow-sm' });
+            msg.textContent = '¡Excelente! Todos los apartamentos están solventes.'; contenedor.appendChild(msg);
+          }
+        } catch (error) {
+          console.error(error); Utils.mostrarError(contenedor, "No se pudo cargar el tablero.", () => this.render(contenedor));
+        }
+      },
+      construirGrafico(contenedor, deudores) {
+        const tarjeta = Utils.crearElemento('div', { class: 'card shadow-sm' });
+        const cabecera = Utils.crearElemento('div', { class: 'card-header bg-white' });
+        const titulo = Utils.crearElemento('h5', { class: 'mb-0' }); titulo.textContent = 'Gráfico de Pareto: Concentración de la Deuda (80/20)';
+        cabecera.appendChild(titulo);
+        const cuerpo = Utils.crearElemento('div', { class: 'card-body overflow-auto' });
+
+        const svgAncho = 800, svgAlto = 400, margen = { sup: 40, der: 50, inf: 60, izq: 60 };
+        const anchoUtil = svgAncho - margen.izq - margen.der, altoUtil = svgAlto - margen.sup - margen.inf;
+        const deudaTotal = deudores.reduce((s, d) => s + d.deuda, 0), maxDeuda = deudores[0].deuda;
+        const anchoBarra = Math.min(40, (anchoUtil / deudores.length) * 0.8), espaciado = anchoUtil / deudores.length;
+        const svg = Utils.crearElementoSVG('svg', { viewBox: `0 0 ${svgAncho} ${svgAlto}`, width: '100%', height: '100%', style: 'min-width: 600px; max-height: 400px;' });
+
+        let acumulada = 0; const puntosLinea = [];
+
+        const ejeYIzq = Utils.crearElementoSVG('line', { x1: margen.izq, y1: margen.sup, x2: margen.izq, y2: margen.sup + altoUtil, stroke: '#dee2e6' });
+        const txtYIzq = Utils.crearElementoSVG('text', { x: margen.izq - 10, y: margen.sup + 5, 'text-anchor': 'end', 'font-size': '12px', fill: '#495057' }); txtYIzq.textContent = `$${maxDeuda.toFixed(0)}`;
+        svg.appendChild(ejeYIzq); svg.appendChild(txtYIzq);
+
+        const ejeYDer = Utils.crearElementoSVG('line', { x1: svgAncho - margen.der, y1: margen.sup, x2: svgAncho - margen.der, y2: margen.sup + altoUtil, stroke: '#dee2e6' });
+        const txtYDer100 = Utils.crearElementoSVG('text', { x: svgAncho - margen.der + 10, y: margen.sup + 5, 'font-size': '12px', fill: '#dc3545' }); txtYDer100.textContent = '100%';
+        svg.appendChild(ejeYDer); svg.appendChild(txtYDer100);
+
+        const linea80Y = margen.sup + altoUtil - (0.8 * altoUtil);
+        const linea80 = Utils.crearElementoSVG('line', { x1: margen.izq, y1: linea80Y, x2: svgAncho - margen.der, y2: linea80Y, stroke: '#ffc107', 'stroke-dasharray': '5,5' });
+        const txt80 = Utils.crearElementoSVG('text', { x: svgAncho - margen.der + 10, y: linea80Y + 5, 'font-size': '12px', fill: '#ffc107' }); txt80.textContent = '80%';
+        svg.appendChild(linea80); svg.appendChild(txt80);
+
+        deudores.forEach((d, i) => {
+          acumulada += d.deuda; const pct = acumulada / deudaTotal;
+          const x = margen.izq + (i * espaciado) + (espaciado / 2);
+          const altoBar = (d.deuda / maxDeuda) * altoUtil; const yBar = margen.sup + altoUtil - altoBar;
+          
+          const rect = Utils.crearElementoSVG('rect', { x: x - (anchoBarra / 2), y: yBar, width: anchoBarra, height: altoBar, class: 'bar-chart', rx: 2 });
+          const titleRect = Utils.crearElementoSVG('title'); titleRect.textContent = `Apt: ${d.numero}\nDeuda: $${d.deuda.toFixed(2)}`; rect.appendChild(titleRect);
+          const textX = Utils.crearElementoSVG('text', { x: x, y: svgAlto - margen.inf + 20, 'text-anchor': 'middle', 'font-size': '11px', fill: '#495057' }); textX.textContent = d.numero;
+          svg.appendChild(rect); svg.appendChild(textX);
+
+          const yLine = margen.sup + altoUtil - (pct * altoUtil); puntosLinea.push(`${x},${yLine}`);
+          const circle = Utils.crearElementoSVG('circle', { cx: x, cy: yLine, r: 4, class: 'point-chart' });
+          const titleCirc = Utils.crearElementoSVG('title'); titleCirc.textContent = `Acumulado: ${(pct * 100).toFixed(1)}%`; circle.appendChild(titleCirc);
+          setTimeout(() => svg.appendChild(circle), 0);
+        });
+
+        if (puntosLinea.length > 0) {
+          const pInit = `${margen.izq - (espaciado/2)},${margen.sup + altoUtil}`;
+          const poly = Utils.crearElementoSVG('polyline', { points: `${pInit} ${puntosLinea.join(' ')}`, class: 'line-chart' }); svg.appendChild(poly);
+        }
+        cuerpo.appendChild(svg); tarjeta.appendChild(cabecera); tarjeta.appendChild(cuerpo); contenedor.appendChild(tarjeta);
+      }
+    };
+
+    // 2. DIRECTORIO
+    const Directorio = {
+      aptEditId: null,
+      async render(contenedor) {
+        Utils.mostrarCargando(contenedor);
+        try {
+          const aptos = await SecureDoc.data.list({ where: [['numero', '!=', '']] });
+          Utils.ordenarApartamentos(aptos);
+          
+          contenedor.replaceChildren();
+          
+          const header = Utils.crearElemento('div', { class: 'd-flex justify-content-between align-items-center mb-4' });
+          const titulo = Utils.crearElemento('h3', { class: 'mb-0' }); titulo.textContent = 'Directorio de Apartamentos';
+          const btnNuevo = Utils.crearElemento('button', { class: 'btn btn-primary' });
+          btnNuevo.textContent = '+ Nuevo Apartamento';
+          btnNuevo.addEventListener('click', () => this.renderForm(contenedor, null, aptos.length));
+          header.appendChild(titulo); header.appendChild(btnNuevo); contenedor.appendChild(header);
+
+          const tarjeta = Utils.crearElemento('div', { class: 'card shadow-sm' });
+          const cuerpo = Utils.crearElemento('div', { class: 'card-body p-0 table-responsive' });
+          const tabla = Utils.crearElemento('table', { class: 'table table-hover mb-0' });
+          
+          const thead = Utils.crearElemento('thead', { class: 'table-light' });
+          const trHead = Utils.crearElemento('tr');
+          ['Mover', 'Apt.', 'Propietario', 'Alícuota', 'Deuda (USD)', 'Acciones'].forEach(t => {
+            const th = Utils.crearElemento('th', { class: 'align-middle' }); th.textContent = t; trHead.appendChild(th);
+          });
+          thead.appendChild(trHead); tabla.appendChild(thead);
+
+          const tbody = Utils.crearElemento('tbody');
+          if (aptos.length === 0) {
+            const tr = Utils.crearElemento('tr'); const td = Utils.crearElemento('td', { colspan: '6', class: 'text-center py-3' });
+            td.textContent = 'No hay apartamentos registrados.'; tr.appendChild(td); tbody.appendChild(tr);
+          } else {
+            aptos.forEach((apt, index) => {
+              const tr = Utils.crearElemento('tr');
+              
+              const move = Utils.crearElemento('td', { class: 'align-middle' });
+              const btnUp = Utils.crearElemento('button', { class: 'btn btn-sm btn-outline-secondary me-1' });
+              btnUp.textContent = '▲'; btnUp.disabled = (index === 0);
+              btnUp.addEventListener('click', () => this.moverFila(index, -1, aptos, contenedor));
+              
+              const btnDown = Utils.crearElemento('button', { class: 'btn btn-sm btn-outline-secondary' });
+              btnDown.textContent = '▼'; btnDown.disabled = (index === aptos.length - 1);
+              btnDown.addEventListener('click', () => this.moverFila(index, 1, aptos, contenedor));
+              
+              move.appendChild(btnUp); move.appendChild(btnDown);
+
+              const num = Utils.crearElemento('td', { class: 'fw-bold align-middle' }); num.textContent = apt.numero;
+              const prop = Utils.crearElemento('td', { class: 'align-middle' }); prop.textContent = apt.propietario;
+              const ali = Utils.crearElemento('td', { class: 'align-middle' }); ali.textContent = `${Number(apt.alicuota).toFixed(4)}%`;
+              
+              const d = Number(apt.deudaActual) || 0;
+              const deu = Utils.crearElemento('td', { class: 'align-middle' });
+              deu.textContent = `$${d.toFixed(2)}`;
+              if (d > 0) deu.classList.add('text-danger', 'fw-bold'); else if (d < 0) deu.classList.add('text-success');
+
+              const acc = Utils.crearElemento('td', { class: 'align-middle' });
+              const btnGroup = Utils.crearElemento('div', { class: 'btn-group btn-group-sm' });
+              
+              const btnEst = Utils.crearElemento('button', { class: 'btn btn-outline-info' }); btnEst.textContent = 'Estado';
+              btnEst.addEventListener('click', () => this.verEstadoCuenta(contenedor, apt));
+              const btnEd = Utils.crearElemento('button', { class: 'btn btn-outline-primary' }); btnEd.textContent = 'Editar';
+              btnEd.addEventListener('click', () => this.renderForm(contenedor, apt, apt.orden));
+              const btnDel = Utils.crearElemento('button', { class: 'btn btn-outline-danger' }); btnDel.textContent = 'Borrar';
+              btnDel.addEventListener('click', () => this.borrar(apt.id, apt.numero, contenedor));
+              
+              btnGroup.appendChild(btnEst); btnGroup.appendChild(btnEd); btnGroup.appendChild(btnDel); acc.appendChild(btnGroup);
+
+              tr.appendChild(move); tr.appendChild(num); tr.appendChild(prop); tr.appendChild(ali); tr.appendChild(deu); tr.appendChild(acc);
+              tbody.appendChild(tr);
+            });
+          }
+          tabla.appendChild(tbody); cuerpo.appendChild(tabla); tarjeta.appendChild(cuerpo); contenedor.appendChild(tarjeta);
+        } catch (error) { console.error(error); Utils.mostrarError(contenedor, "No se pudo cargar el directorio."); }
+      },
+      async moverFila(indexActual, delta, aptos, contenedor) {
+        const indexDestino = indexActual + delta; if (indexDestino < 0 || indexDestino >= aptos.length) return;
+        const apt1 = aptos[indexActual]; const apt2 = aptos[indexDestino];
+        Utils.mostrarCargando(contenedor);
+        try {
+          const tempOrden = apt1.orden;
+          await SecureDoc.data.update(apt1.id, { orden: apt2.orden });
+          await SecureDoc.data.update(apt2.id, { orden: tempOrden });
+          this.render(contenedor);
+        } catch(e) { console.error(e); Utils.mostrarError(contenedor, "Error al reordenar.", () => this.render(contenedor)); }
+      },
+      renderForm(contenedor, aptToEdit = null, nextOrden = 0) {
+        this.aptEditId = aptToEdit ? aptToEdit.id : null; this.aptEditOrden = nextOrden;
+        contenedor.replaceChildren();
+        const header = Utils.crearElemento('div', { class: 'mb-4' });
+        const titulo = Utils.crearElemento('h3'); titulo.textContent = aptToEdit ? 'Editar Apartamento' : 'Nuevo Apartamento';
+        header.appendChild(titulo); contenedor.appendChild(header);
+
+        const card = Utils.crearElemento('div', { class: 'card shadow-sm mx-auto', style: 'max-width: 600px;' });
+        const cBody = Utils.crearElemento('div', { class: 'card-body' });
+        const form = Utils.crearElemento('form'); form.addEventListener('submit', (e) => this.guardar(e, contenedor));
+
+        const crearCampo = (id, label, tipo, requerido, paso, valorDefecto) => {
+          const d = Utils.crearElemento('div', { class: 'mb-3' });
+          const l = Utils.crearElemento('label', { class: 'form-label fw-bold' }); l.textContent = label;
+          const i = Utils.crearElemento('input', { type: tipo, class: 'form-control', id: id });
+          if(requerido) i.setAttribute('required', 'true'); if(paso) i.setAttribute('step', paso);
+          if(valorDefecto !== undefined && valorDefecto !== null) i.value = valorDefecto;
+          d.appendChild(l); d.appendChild(i); return { div: d, input: i };
+        };
+
+        const fNum = crearCampo('fAptNum', 'Número de Apartamento', 'text', true, null, aptToEdit ? aptToEdit.numero : '');
+        const fProp = crearCampo('fAptProp', 'Propietario', 'text', true, null, aptToEdit ? aptToEdit.propietario : '');
+        const fAli = crearCampo('fAptAli', 'Alícuota (%)', 'number', true, '0.0001', aptToEdit ? aptToEdit.alicuota : '');
+        const fDeu = crearCampo('fAptDeu', 'Deuda Inicial/Actual (USD)', 'number', true, '0.01', aptToEdit ? aptToEdit.deudaActual : '0');
+        
+        const dObs = Utils.crearElemento('div', { class: 'mb-4' });
+        const lObs = Utils.crearElemento('label', { class: 'form-label fw-bold' }); lObs.textContent = 'Observaciones';
+        const iObs = Utils.crearElemento('textarea', { class: 'form-control', rows: '3' });
+        if(aptToEdit && aptToEdit.observaciones) iObs.value = aptToEdit.observaciones;
+        dObs.appendChild(lObs); dObs.appendChild(iObs);
+
+        this.inputsForm = { num: fNum.input, prop: fProp.input, ali: fAli.input, deu: fDeu.input, obs: iObs };
+
+        const dBtn = Utils.crearElemento('div', { class: 'd-flex justify-content-end gap-2' });
+        const bCanc = Utils.crearElemento('button', { type: 'button', class: 'btn btn-secondary' }); bCanc.textContent = 'Cancelar';
+        bCanc.addEventListener('click', () => this.render(contenedor));
+        const bGuardar = Utils.crearElemento('button', { type: 'submit', class: 'btn btn-primary' }); bGuardar.textContent = 'Guardar';
+        dBtn.appendChild(bCanc); dBtn.appendChild(bGuardar);
+
+        form.appendChild(fNum.div); form.appendChild(fProp.div); form.appendChild(fAli.div); form.appendChild(fDeu.div); form.appendChild(dObs); form.appendChild(dBtn);
+        cBody.appendChild(form); card.appendChild(cBody); contenedor.appendChild(card);
+      },
+      async guardar(e, contenedor) {
+        e.preventDefault();
+        const data = { numero: this.inputsForm.num.value.trim(), propietario: this.inputsForm.prop.value.trim(), alicuota: parseFloat(this.inputsForm.ali.value) || 0, deudaActual: parseFloat(this.inputsForm.deu.value) || 0, observaciones: this.inputsForm.obs.value.trim(), orden: this.aptEditOrden };
+        try {
+          if (this.aptEditId) await SecureDoc.data.update(this.aptEditId, data); else await SecureDoc.data.add(data);
+          this.render(contenedor);
+        } catch(err) { console.error(err); alert('Error guardando el apartamento.'); }
+      },
+      async borrar(id, numero, contenedor) {
+        if (!confirm(`¿Borrar el apartamento ${numero}?`)) return;
+        try { await SecureDoc.data.remove(id); this.render(contenedor); } catch(e) { console.error(e); alert('Error.'); }
+      },
+      async verEstadoCuenta(contenedor, apt) {
+        Utils.mostrarCargando(contenedor);
+        try {
+          const txs = await SecureDoc.data.list({ where: [['apartamento', '==', apt.numero]] });
+          txs.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+          contenedor.replaceChildren();
+
+          const header = Utils.crearElemento('div', { class: 'd-flex justify-content-between align-items-center mb-4' });
+          const titBox = Utils.crearElemento('div');
+          const tit = Utils.crearElemento('h3', { class: 'mb-0' }); tit.textContent = `Apt. ${apt.numero}`;
+          const subtit = Utils.crearElemento('p', { class: 'text-muted mb-0' }); subtit.textContent = `${apt.propietario}`;
+          titBox.appendChild(tit); titBox.appendChild(subtit);
+          
+          const btnVolver = Utils.crearElemento('button', { class: 'btn btn-secondary' });
+          btnVolver.textContent = '← Volver'; btnVolver.addEventListener('click', () => this.render(contenedor));
+          header.appendChild(titBox); header.appendChild(btnVolver); contenedor.appendChild(header);
+
+          const dNum = Number(apt.deudaActual) || 0;
+          const cardRes = Utils.crearElemento('div', { class: 'card mb-4 text-center shadow-sm', style: 'max-width: 300px;' });
+          const cBody = Utils.crearElemento('div', { class: 'card-body py-3' });
+          const lDeu = Utils.crearElemento('h6', { class: 'text-muted mb-1 text-uppercase' }); lDeu.textContent = 'Deuda Actual';
+          const vDeu = Utils.crearElemento('h3', { class: 'mb-0 fw-bold' });
+          vDeu.textContent = `$${dNum.toFixed(2)}`;
+          if (dNum > 0) vDeu.classList.add('text-danger'); else if (dNum < 0) vDeu.classList.add('text-success');
+          cBody.appendChild(lDeu); cBody.appendChild(vDeu); cardRes.appendChild(cBody); contenedor.appendChild(cardRes);
+
+          const tarjeta = Utils.crearElemento('div', { class: 'card shadow-sm' });
+          const cab = Utils.crearElemento('div', { class: 'card-header bg-white fw-bold' }); cab.textContent = 'Historial de Movimientos'; tarjeta.appendChild(cab);
+          const cuerpo = Utils.crearElemento('div', { class: 'card-body p-0 table-responsive' });
+          const tabla = Utils.crearElemento('table', { class: 'table table-hover mb-0' });
+          const thead = Utils.crearElemento('thead', { class: 'table-light' }); const trH = Utils.crearElemento('tr');
+          ['Fecha', 'Tipo', 'Referencia', 'Monto USD'].forEach(t => { const th = Utils.crearElemento('th'); th.textContent = t; trH.appendChild(th); });
+          thead.appendChild(trH); tabla.appendChild(thead);
+
+          const tbody = Utils.crearElemento('tbody');
+          if (txs.length === 0) {
+            const tr = Utils.crearElemento('tr'); const td = Utils.crearElemento('td', { colspan: '4', class: 'text-center py-3' }); td.textContent = 'Sin movimientos.'; tr.appendChild(td); tbody.appendChild(tr);
+          } else {
+            txs.forEach(tx => {
+              const tr = Utils.crearElemento('tr');
+              const tdF = Utils.crearElemento('td'); tdF.textContent = tx.fecha;
+              const tdT = Utils.crearElemento('td');
+              const b = Utils.crearElemento('span', { class: 'badge' }); b.textContent = tx.tipo;
+              if (tx.tipo.includes('Cargo') || tx.tipo.includes('en contra')) b.classList.add('bg-danger'); else b.classList.add('bg-success');
+              tdT.appendChild(b);
+              const tdO = Utils.crearElemento('td'); tdO.textContent = tx.observacion || '-';
+              const tdM = Utils.crearElemento('td', { class: 'fw-bold text-end' });
+              const isResta = (!tx.tipo.includes('Cargo') && !tx.tipo.includes('en contra'));
+              tdM.textContent = `${isResta ? '-' : '+'}$${Number(tx.montoUSD).toFixed(2)}`;
+              tdM.classList.add(isResta ? 'text-success' : 'text-danger');
+              tr.appendChild(tdF); tr.appendChild(tdT); tr.appendChild(tdO); tr.appendChild(tdM); tbody.appendChild(tr);
+            });
+          }
+          tabla.appendChild(tbody); cuerpo.appendChild(tabla); tarjeta.appendChild(cuerpo); contenedor.appendChild(tarjeta);
+        } catch (error) { console.error(error); Utils.mostrarError(contenedor, "No se pudo cargar el historial.", () => this.render(contenedor)); }
+      }
+    };
+
+    // 3. CONCEPTOS
+    const Conceptos = {
+      editId: null,
+      async render(contenedor) {
+        Utils.mostrarCargando(contenedor);
+        try {
+          const conceptos = await SecureDoc.data.list({ where: [['nombre', '!=', '']] });
+          conceptos.sort((a,b) => a.nombre.localeCompare(b.nombre));
+          contenedor.replaceChildren();
+
+          const header = Utils.crearElemento('div', { class: 'mb-4' });
+          const tit = Utils.crearElemento('h3'); tit.textContent = 'Catálogo de Conceptos'; header.appendChild(tit); contenedor.appendChild(header);
+
+          const row = Utils.crearElemento('div', { class: 'row' });
+          const colF = Utils.crearElemento('div', { class: 'col-md-4 mb-4' });
+          const cardF = Utils.crearElemento('div', { class: 'card shadow-sm' });
+          const cFHead = Utils.crearElemento('div', { class: 'card-header bg-white fw-bold' });
+          this.titForm = Utils.crearElemento('span'); this.titForm.textContent = 'Nuevo Concepto'; cFHead.appendChild(this.titForm); cardF.appendChild(cFHead);
+          
+          const cFBody = Utils.crearElemento('div', { class: 'card-body' });
+          const form = Utils.crearElemento('form');
+          
+          const dNom = Utils.crearElemento('div', { class: 'mb-3' });
+          const lNom = Utils.crearElemento('label', { class: 'form-label' }); lNom.textContent = 'Nombre';
+          this.iNom = Utils.crearElemento('input', { type: 'text', class: 'form-control', required: 'true' });
+          dNom.appendChild(lNom); dNom.appendChild(this.iNom); form.appendChild(dNom);
+
+          const dTip = Utils.crearElemento('div', { class: 'mb-3' });
+          const lTip = Utils.crearElemento('label', { class: 'form-label' }); lTip.textContent = 'Tipo';
+          this.sTip = Utils.crearElemento('select', { class: 'form-select' });
+          const oEg = Utils.crearElemento('option', { value: 'Egreso' }); oEg.textContent = 'Egreso';
+          const oIn = Utils.crearElemento('option', { value: 'Ingreso' }); oIn.textContent = 'Ingreso';
+          this.sTip.appendChild(oEg); this.sTip.appendChild(oIn); dTip.appendChild(lTip); dTip.appendChild(this.sTip); form.appendChild(dTip);
+
+          const dMon = Utils.crearElemento('div', { class: 'mb-3' });
+          const lMon = Utils.crearElemento('label', { class: 'form-label' }); lMon.textContent = 'Monto Preestablecido (USD)';
+          this.iMon = Utils.crearElemento('input', { type: 'number', step: '0.01', class: 'form-control', required: 'true' });
+          dMon.appendChild(lMon); dMon.appendChild(this.iMon); form.appendChild(dMon);
+
+          const btnG = Utils.crearElemento('button', { class: 'btn btn-primary w-100 mb-2', type: 'submit' });
+          this.btnG = btnG; this.btnG.textContent = 'Guardar';
+          this.btnC = Utils.crearElemento('button', { class: 'btn btn-outline-secondary w-100 d-none', type: 'button' });
+          this.btnC.textContent = 'Cancelar Edición'; this.btnC.addEventListener('click', () => this.resetForm());
+
+          form.appendChild(this.btnG); form.appendChild(this.btnC); form.addEventListener('submit', (e) => this.guardar(e, contenedor));
+          cFBody.appendChild(form); cardF.appendChild(cFBody); colF.appendChild(cardF); row.appendChild(colF);
+
+          const colL = Utils.crearElemento('div', { class: 'col-md-8' });
+          const cardL = Utils.crearElemento('div', { class: 'card shadow-sm' });
+          const cLBody = Utils.crearElemento('div', { class: 'card-body p-0 table-responsive' });
+          const table = Utils.crearElemento('table', { class: 'table table-hover mb-0' });
+          const th = Utils.crearElemento('thead', { class: 'table-light' }); const trh = Utils.crearElemento('tr');
+          ['Nombre', 'Tipo', 'Monto ($)', 'Acción'].forEach(t => { const h = Utils.crearElemento('th'); h.textContent = t; trh.appendChild(h); });
+          th.appendChild(trh); table.appendChild(th);
+          
+          const tbody = Utils.crearElemento('tbody');
+          conceptos.forEach(c => {
+            const tr = Utils.crearElemento('tr');
+            const n = Utils.crearElemento('td', {class: 'align-middle'}); n.textContent = c.nombre;
+            const t = Utils.crearElemento('td', {class: 'align-middle'}); t.textContent = c.tipo;
+            const m = Utils.crearElemento('td', {class: 'align-middle'}); m.textContent = Number(c.montoPreestablecido).toFixed(2);
+            const a = Utils.crearElemento('td', {class: 'align-middle'});
+            
+            const g = Utils.crearElemento('div', { class: 'btn-group btn-group-sm' });
+            const be = Utils.crearElemento('button', { class: 'btn btn-outline-primary' }); be.textContent = 'Editar';
+            be.addEventListener('click', () => this.cargarEdicion(c));
+            const bd = Utils.crearElemento('button', { class: 'btn btn-outline-danger' }); bd.textContent = 'Borrar';
+            bd.addEventListener('click', () => this.borrar(c.id, contenedor));
+            
+            g.appendChild(be); g.appendChild(bd); a.appendChild(g);
+            tr.appendChild(n); tr.appendChild(t); tr.appendChild(m); tr.appendChild(a); tbody.appendChild(tr);
+          });
+          table.appendChild(tbody); cLBody.appendChild(table); cardL.appendChild(cLBody); colL.appendChild(cardL);
+          row.appendChild(colL); contenedor.appendChild(row);
+
+        } catch (error) { console.error(error); Utils.mostrarError(contenedor, "Error cargando conceptos."); }
+      },
+      cargarEdicion(c) {
+        this.editId = c.id; this.iNom.value = c.nombre; this.sTip.value = c.tipo; this.iMon.value = c.montoPreestablecido;
+        this.titForm.textContent = 'Editar Concepto'; this.btnG.textContent = 'Actualizar'; this.btnC.classList.remove('d-none');
+      },
+      resetForm() {
+        this.editId = null; this.iNom.value = ''; this.sTip.value = 'Egreso'; this.iMon.value = '';
+        this.titForm.textContent = 'Nuevo Concepto'; this.btnG.textContent = 'Guardar'; this.btnC.classList.add('d-none'); this.btnG.disabled = false;
+      },
+      async guardar(e, contenedor) {
+        e.preventDefault(); this.btnG.disabled = true;
+        const data = { nombre: this.iNom.value.trim(), tipo: this.sTip.value, montoPreestablecido: parseFloat(this.iMon.value) || 0 };
+        try {
+          if (this.editId) await SecureDoc.data.update(this.editId, data); else await SecureDoc.data.add(data);
+          this.resetForm(); this.render(contenedor);
+        } catch (err) { console.error(err); alert('Error al guardar.'); this.btnG.disabled = false; }
+      },
+      async borrar(id, contenedor) {
+        if (!confirm('¿Seguro que desea borrar este concepto?')) return;
+        try { await SecureDoc.data.remove(id); if (this.editId === id) this.resetForm(); this.render(contenedor); } catch (e) { console.error(e); alert('Error al borrar.'); }
+      }
+    };
+
+    // 4. PRESUPUESTOS (Con retención de estado tipo borrador y tabla formateada)
+    const Presupuestos = {
+      aptos: [], conceptos: [], seleccionados: [], mes: '', perfil: null, borradorId: null,
+
+      async render(contenedor) {
+        Utils.mostrarCargando(contenedor);
+        try {
+          this.perfil = await Utils.cargarPerfil();
+          this.aptos = await SecureDoc.data.list({ where: [['numero', '!=', '']] });
+          Utils.ordenarApartamentos(this.aptos);
+          this.conceptos = await SecureDoc.data.list({ where: [['nombre', '!=', '']] });
+          
+          // Buscar si existe un borrador guardado
+          const borradores = await SecureDoc.data.list({ where: [['tipoDato', '==', 'borrador_presupuesto']] });
+          if (borradores.length > 0) {
+              this.borradorId = borradores[0].id;
+              this.mes = borradores[0].mes;
+              this.seleccionados = borradores[0].seleccionados || [];
+          } else {
+              const hoy = new Date(); this.mes = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}`;
+              this.seleccionados = [];
+              const res = await SecureDoc.data.add({ tipoDato: 'borrador_presupuesto', mes: this.mes, seleccionados: [] });
+              this.borradorId = res.id;
+          }
+          
+          this.dibujarPaso1(contenedor);
+        } catch (e) { console.error(e); Utils.mostrarError(contenedor, "Error iniciando presupuestos."); }
+      },
+
+      async guardarBorrador() {
+         if (this.borradorId) {
+             try {
+                 await SecureDoc.data.update(this.borradorId, { mes: this.mes, seleccionados: this.seleccionados });
+             } catch(e) {
+                 console.warn("No se pudo guardar el borrador", e);
+             }
+         }
+      },
+
+      async cancelarBorrador(contenedor) {
+         if(confirm('¿Desea limpiar el presupuesto actual y comenzar de cero? Se borrarán los conceptos agregados.')) {
+             const hoy = new Date(); this.mes = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}`;
+             this.seleccionados = [];
+             await this.guardarBorrador();
+             this.render(contenedor);
+         }
+      },
+
+      dibujarPaso1(contenedor) {
+        contenedor.replaceChildren();
+        const hdr = Utils.crearElemento('div', { class: 'd-flex justify-content-between align-items-center mb-4 d-print-none' });
+        const t = Utils.crearElemento('h3'); t.textContent = 'Armar Presupuesto Mensual'; 
+        
+        const btnCancelar = Utils.crearElemento('button', { class: 'btn btn-outline-danger' });
+        btnCancelar.textContent = 'Limpiar Presupuesto';
+        btnCancelar.addEventListener('click', () => this.cancelarBorrador(contenedor));
+        
+        hdr.appendChild(t); hdr.appendChild(btnCancelar); contenedor.appendChild(hdr);
+
+        const card = Utils.crearElemento('div', { class: 'card shadow-sm d-print-none' });
+        const body = Utils.crearElemento('div', { class: 'card-body' });
+        const row1 = Utils.crearElemento('div', { class: 'row mb-4 align-items-end' });
+        
+        const colM = Utils.crearElemento('div', { class: 'col-md-4' });
+        const lM = Utils.crearElemento('label', { class: 'form-label fw-bold' }); lM.textContent = 'Mes';
+        const iM = Utils.crearElemento('input', { type: 'month', class: 'form-control', value: this.mes });
+        iM.addEventListener('change', e => { this.mes = e.target.value; this.guardarBorrador(); });
+        colM.appendChild(lM); colM.appendChild(iM); row1.appendChild(colM);
+
+        const colC = Utils.crearElemento('div', { class: 'col-md-6' });
+        const lC = Utils.crearElemento('label', { class: 'form-label fw-bold' }); lC.textContent = 'Agregar Concepto';
+        const ig = Utils.crearElemento('div', { class: 'input-group' });
+        const selC = Utils.crearElemento('select', { class: 'form-select' });
+        const optD = Utils.crearElemento('option', { value: '' }); optD.textContent = '-- Seleccione --'; selC.appendChild(optD);
+        this.conceptos.forEach(c => {
+          const o = Utils.crearElemento('option', { value: c.id }); o.textContent = `${c.nombre} ($${c.montoPreestablecido})`; selC.appendChild(o);
+        });
+        const btnA = Utils.crearElemento('button', { class: 'btn btn-primary' }); btnA.textContent = 'Añadir';
+        btnA.addEventListener('click', () => {
+          if (!selC.value) return; const bc = this.conceptos.find(x => x.id === selC.value);
+          this.seleccionados.push({ id: bc.id, nombre: bc.nombre, tipo: bc.tipo, monto: parseFloat(bc.montoPreestablecido) });
+          this.dibujarTablaItems(); selC.value = ''; this.guardarBorrador();
+        });
+        ig.appendChild(selC); ig.appendChild(btnA); colC.appendChild(lC); colC.appendChild(ig); row1.appendChild(colC);
+        body.appendChild(row1); this.divT = Utils.crearElemento('div'); body.appendChild(this.divT);
+
+        const dBtn = Utils.crearElemento('div', { class: 'text-end mt-4' });
+        const bSig = Utils.crearElemento('button', { class: 'btn btn-success btn-lg' }); bSig.textContent = 'Ver Resumen y Distribuir →';
+        bSig.addEventListener('click', async () => { 
+            if (this.seleccionados.length === 0) return alert('Agregue conceptos.'); 
+            await this.guardarBorrador();
+            this.dibujarPaso2(contenedor); 
+        });
+        dBtn.appendChild(bSig); body.appendChild(dBtn); card.appendChild(body); contenedor.appendChild(card); this.dibujarTablaItems();
+      },
+
+      dibujarTablaItems() {
+        this.divT.replaceChildren();
+        if (this.seleccionados.length === 0) { const a = Utils.crearElemento('div', { class: 'alert alert-light border' }); a.textContent = 'No hay conceptos en el borrador actual.'; this.divT.appendChild(a); return; }
+        const t = Utils.crearElemento('table', { class: 'table table-bordered' });
+        const h = Utils.crearElemento('thead', { class: 'table-light' }); const rh = Utils.crearElemento('tr');
+        ['Concepto', 'Tipo', 'Monto ($)', ''].forEach(txt => { const th = Utils.crearElemento('th'); th.textContent = txt; rh.appendChild(th); });
+        h.appendChild(rh); t.appendChild(h);
+
+        const b = Utils.crearElemento('tbody');
+        this.seleccionados.forEach((s, idx) => {
+          const r = Utils.crearElemento('tr');
+          const d1 = Utils.crearElemento('td', { class: 'align-middle' }); d1.textContent = s.nombre;
+          const d2 = Utils.crearElemento('td', { class: 'align-middle' }); d2.textContent = s.tipo;
+          const d3 = Utils.crearElemento('td');
+          const im = Utils.crearElemento('input', { type: 'number', step: '0.01', class: 'form-control form-control-sm w-50', value: s.monto });
+          im.addEventListener('change', e => { s.monto = parseFloat(e.target.value)||0; this.guardarBorrador(); }); d3.appendChild(im);
+          const d4 = Utils.crearElemento('td', { class: 'align-middle' });
+          const bx = Utils.crearElemento('button', { class: 'btn btn-sm btn-outline-danger' }); bx.textContent = 'X';
+          bx.addEventListener('click', () => { this.seleccionados.splice(idx,1); this.dibujarTablaItems(); this.guardarBorrador(); }); d4.appendChild(bx);
+          r.appendChild(d1); r.appendChild(d2); r.appendChild(d3); r.appendChild(d4); b.appendChild(r);
+        });
+        t.appendChild(b); this.divT.appendChild(t);
+      },
+
+      dibujarPaso2(contenedor) {
+        contenedor.replaceChildren();
+        let te = 0, ti = 0; this.seleccionados.forEach(s => s.tipo === 'Egreso' ? te += s.monto : ti += s.monto); const neto = te - ti;
+
+        const gruposMap = {};
+        this.aptos.forEach(a => { const p = Number(a.alicuota).toFixed(4); if(!gruposMap[p]) gruposMap[p] = []; gruposMap[p].push(a.numero); });
+        const grupos = Object.keys(gruposMap).map(k => {
+          const apts = gruposMap[k];
+          let e = apts.length <=3 ? apts.join(', ') : `${apts[0]} al ${apts[apts.length-1]}`;
+          return { ali: parseFloat(k), num: apts.length, label: e };
+        }).sort((a,b) => a.ali - b.ali);
+
+        const bb = Utils.crearElemento('div', { class: 'd-flex justify-content-between mb-4 d-print-none' });
+        const bA = Utils.crearElemento('button', { class: 'btn btn-secondary' }); bA.textContent = '← Atrás'; bA.addEventListener('click', () => this.dibujarPaso1(contenedor));
+        const bg = Utils.crearElemento('div');
+        const bP = Utils.crearElemento('button', { class: 'btn btn-outline-secondary me-2' }); bP.textContent = 'Imprimir'; bP.addEventListener('click', ()=>window.print());
+        const bC = Utils.crearElemento('button', { class: 'btn btn-success' }); bC.textContent = 'Aprobar y Cargar'; bC.addEventListener('click', () => this.procesar(contenedor, neto));
+        bg.appendChild(bP); bg.appendChild(bC); bb.appendChild(bA); bb.appendChild(bg); contenedor.appendChild(bb);
+
+        const c = Utils.crearElemento('div', { class: 'card p-4 print-container border-0 shadow-sm' });
+        
+        const cabeceraImpresa = Utils.generarCabeceraReporte(this.perfil, `Distribución del Monto Neto por Alícuota`);
+        c.appendChild(cabeceraImpresa);
+
+        const tab = Utils.crearElemento('table', { class: 'table table-bordered table-sm mt-3 border-dark' });
+        const thd = Utils.crearElemento('thead', { class: 'th-dark' }); const trh = Utils.crearElemento('tr');
+        const th1 = Utils.crearElemento('th'); th1.textContent = 'Concepto'; trh.appendChild(th1);
+        const th2 = Utils.crearElemento('th', { class: 'text-center' }); th2.textContent = 'Cargo'; trh.appendChild(th2);
+        grupos.forEach(g => {
+          const thg = Utils.crearElemento('th', { class: 'text-center' });
+          const dv = Utils.crearElemento('div'); dv.textContent = g.label;
+          const sm = Utils.crearElemento('small', { class: 'fw-normal' }); sm.textContent = `${g.ali}%`;
+          thg.appendChild(dv); thg.appendChild(sm); trh.appendChild(thg);
+        });
+        thd.appendChild(trh); tab.appendChild(thd);
+
+        const tbo = Utils.crearElemento('tbody');
+        const df = (nom, mon, isIng, cssClass) => {
+          const tr = Utils.crearElemento('tr'); 
+          if(cssClass) tr.classList.add(cssClass);
+          
+          const t1 = Utils.crearElemento('td'); t1.textContent = nom;
+          const t2 = Utils.crearElemento('td', { class: 'text-center fw-bold' }); t2.textContent = `$${mon.toFixed(2)}`; tr.appendChild(t1); tr.appendChild(t2);
+          grupos.forEach(g => { const v = mon * (g.ali/100) * g.num; const t3 = Utils.crearElemento('td', { class: 'text-end' }); t3.textContent = `$${v.toFixed(2)}`; tr.appendChild(t3); });
+          tbo.appendChild(tr);
+        };
+
+        // Egresos normales
+        this.seleccionados.filter(s=>s.tipo==='Egreso').forEach(s => df(s.nombre, s.monto, false, ''));
+        // Total Gastos (Fila gris clara)
+        df('Total Gastos', te, false, 'tr-gastos');
+        
+        // Ingresos
+        const ings = this.seleccionados.filter(s=>s.tipo==='Ingreso');
+        if (ings.length > 0) { 
+            ings.forEach(s => df(s.nombre, s.monto, true, 'tr-ingreso')); 
+            // Total Ingresos (Fila verde clara)
+            df('Total Ingresos', ti, true, 'tr-tot-ingresos'); 
+        }
+        
+        // Monto Neto (Fila rojiza clara)
+        const trn = Utils.crearElemento('tr', { class: 'tr-neto' });
+        const tn1 = Utils.crearElemento('td'); tn1.textContent = 'Monto Neto a Distribuir'; trn.appendChild(tn1);
+        const tn2 = Utils.crearElemento('td', { class: 'text-center' }); tn2.textContent = `$${neto.toFixed(2)}`; trn.appendChild(tn2);
+        grupos.forEach(g => { const vn = neto * (g.ali/100) * g.num; const t3 = Utils.crearElemento('td', { class: 'text-end' }); t3.textContent = `$${vn.toFixed(2)}`; trn.appendChild(t3); });
+        tbo.appendChild(trn);
+
+        // Total por Apto (Fila gris oscuro con rojo)[cite: 2]
+        const trf = Utils.crearElemento('tr', { class: 'tr-tot-apto' });
+        const tf1 = Utils.crearElemento('td', { colspan: '2' }); tf1.textContent = 'TOTAL por Apto'; trf.appendChild(tf1);
+        grupos.forEach(g => { const vi = neto * (g.ali/100); const t3 = Utils.crearElemento('td', { class: 'text-end monto-red' }); t3.textContent = `$${vi.toFixed(2)}`; trf.appendChild(t3); });
+        tbo.appendChild(trf);
+        
+        tab.appendChild(tbo); c.appendChild(tab); 
+
+        const notaFoot = Utils.crearElemento('small', {class: 'text-muted mt-2 d-block'});
+        notaFoot.textContent = "Cada columna muestra el aporte del grupo de apartamentos. La fila TOTAL por Apto indica lo que paga cada apartamento individual del grupo.";
+        c.appendChild(notaFoot);
+
+        contenedor.appendChild(c);
+      },
+
+      async procesar(contenedor, neto) {
+        if(neto <= 0) return alert('Neto no mayor a 0'); if(!confirm('¿Cargar montos a deudas?')) return;
+        Utils.mostrarCargando(contenedor);
+        try {
+          await SecureDoc.data.add({ mesAnio: this.mes, balance: neto, tipoDato: 'presupuesto_historico' }); 
+          const fHoy = Utils.obtenerFechaHoyISO();
+          for (const a of this.aptos) {
+            const m = neto * (Number(a.alicuota)/100);
+            if (m > 0) {
+              await SecureDoc.data.add({
+                apartamento: a.numero, fecha: fHoy, tipo: 'Cargo por Presupuesto',
+                monedaOriginal: 'USD', tasaCambio: 1, montoUSD: m, observacion: `Presupuesto ${this.mes}`
+              });
+              const nd = (parseFloat(a.deudaActual)||0) + m; await SecureDoc.data.update(a.id, { deudaActual: nd });
+            }
+          }
+          
+          // Limpiar borrador tras procesar
+          this.seleccionados = [];
+          await this.guardarBorrador();
+
+          alert('¡Procesado exitosamente!'); this.render(contenedor);
+        } catch(e) { console.error(e); Utils.mostrarError(contenedor, "Error al procesar. Revise datos."); }
+      }
+    };
+
+    // 5. CARGOS ESPECIALES
+    const CargosEspeciales = {
+      async render(contenedor) {
+        Utils.mostrarCargando(contenedor);
+        try {
+          const aptos = await SecureDoc.data.list({ where: [['numero', '!=', '']] });
+          Utils.ordenarApartamentos(aptos);
+          contenedor.replaceChildren();
+          
+          const head = Utils.crearElemento('div', { class: 'mb-4' });
+          const tit = Utils.crearElemento('h3'); tit.textContent = 'Cargos Especiales'; head.appendChild(tit); contenedor.appendChild(head);
+
+          const row = Utils.crearElemento('div', { class: 'row' });
+          const colF = Utils.crearElemento('div', { class: 'col-md-5 mb-4' });
+          const cardF = Utils.crearElemento('div', { class: 'card shadow-sm' });
+          const cbF = Utils.crearElemento('div', { class: 'card-body' });
+          
+          const iMot = Utils.crearElemento('input', { type: 'text', class: 'form-control mb-3', placeholder: 'Motivo / Referencia' });
+          const iMon = Utils.crearElemento('input', { type: 'number', class: 'form-control mb-3', placeholder: 'Monto (USD)', step: '0.01' });
+          const sReg = Utils.crearElemento('select', { class: 'form-select mb-4' });
+          const o1 = Utils.crearElemento('option', { value: 'monto_fijo' }); o1.textContent = 'Monto fijo idéntico por Apto';
+          const o2 = Utils.crearElemento('option', { value: 'partes_iguales' }); o2.textContent = 'Total dividido en partes iguales';
+          const o3 = Utils.crearElemento('option', { value: 'alicuota' }); o3.textContent = 'Total distribuido por alícuota';
+          sReg.appendChild(o1); sReg.appendChild(o2); sReg.appendChild(o3);
+
+          const btnP = Utils.crearElemento('button', { class: 'btn btn-danger w-100' }); btnP.textContent = 'Aplicar Cargos';
+          cbF.appendChild(iMot); cbF.appendChild(iMon); cbF.appendChild(sReg); cbF.appendChild(btnP); cardF.appendChild(cbF); colF.appendChild(cardF); row.appendChild(colF);
+
+          const colL = Utils.crearElemento('div', { class: 'col-md-7' });
+          const cardL = Utils.crearElemento('div', { class: 'card shadow-sm' });
+          const cHeadL = Utils.crearElemento('div', { class: 'card-header bg-white d-flex justify-content-between align-items-center' });
+          const thL = Utils.crearElemento('span', { class: 'fw-bold' }); thL.textContent = 'Seleccione Destinos';
+          const btnAll = Utils.crearElemento('button', { class: 'btn btn-sm btn-outline-secondary' }); btnAll.textContent = 'Marcar Todos';
+          cHeadL.appendChild(thL); cHeadL.appendChild(btnAll); cardL.appendChild(cHeadL);
+
+          const cbL = Utils.crearElemento('div', { class: 'card-body p-0', style: 'max-height: 400px; overflow-y: auto;' });
+          const tbL = Utils.crearElemento('table', { class: 'table table-hover mb-0' });
+          const tbody = Utils.crearElemento('tbody');
+          const checks = [];
+
+          aptos.forEach(a => {
+            const tr = Utils.crearElemento('tr', { class: 'cursor-pointer' });
+            const tdc = Utils.crearElemento('td');
+            const chk = Utils.crearElemento('input', { type: 'checkbox', class: 'form-check-input', value: a.id });
+            checks.push({ chk, apt: a }); tdc.appendChild(chk);
+            const tdn = Utils.crearElemento('td', { class: 'fw-bold' }); tdn.textContent = a.numero;
+            const tdp = Utils.crearElemento('td'); tdp.textContent = a.propietario;
+            tr.appendChild(tdc); tr.appendChild(tdn); tr.appendChild(tdp);
+            tr.addEventListener('click', (e) => { if(e.target.tagName !== 'INPUT') chk.checked = !chk.checked; });
+            tbody.appendChild(tr);
+          });
+          tbL.appendChild(tbody); cbL.appendChild(tbL); cardL.appendChild(cbL); colL.appendChild(cardL); row.appendChild(colL);
+
+          btnAll.addEventListener('click', () => checks.forEach(c => c.chk.checked = true));
+
+          btnP.addEventListener('click', async () => {
+            const sels = checks.filter(c => c.chk.checked).map(c => c.apt);
+            if(sels.length === 0) return alert('Seleccione al menos uno.');
+            const m = parseFloat(iMon.value); if(!m || m<=0) return alert('Monto inválido.');
+            const mot = iMot.value.trim(); if(!mot) return alert('Indique motivo.');
+            if(!confirm(`¿Cargar a ${sels.length} apartamentos?`)) return;
+
+            btnP.disabled = true;
+            try {
+              const fHoy = Utils.obtenerFechaHoyISO();
+              let sAli = 0; if (sReg.value === 'alicuota') sAli = sels.reduce((acc, a) => acc + Number(a.alicuota), 0);
+
+              for (const a of sels) {
+                let ci = 0;
+                if(sReg.value === 'monto_fijo') ci = m;
+                else if(sReg.value === 'partes_iguales') ci = m / sels.length;
+                else if(sReg.value === 'alicuota') ci = m * (Number(a.alicuota)/sAli);
+
+                await SecureDoc.data.add({
+                  apartamento: a.numero, fecha: fHoy, tipo: 'Cargo Especial',
+                  monedaOriginal: 'USD', tasaCambio: 1, montoUSD: ci, observacion: mot
+                });
+                const nd = (parseFloat(a.deudaActual)||0) + ci; await SecureDoc.data.update(a.id, { deudaActual: nd });
+              }
+              alert('Cargos aplicados.'); this.render(contenedor);
+            } catch(e) { console.error(e); alert('Error procesando.'); btnP.disabled = false; }
+          });
+          contenedor.appendChild(row);
+        } catch(e) { console.error(e); Utils.mostrarError(contenedor, "Error."); }
+      }
+    };
+
+    // 6. CAJA
+    const Caja = {
+      async render(contenedor) {
+        Utils.mostrarCargando(contenedor);
+        try {
+          const aptos = await SecureDoc.data.list({ where: [['numero', '!=', '']] });
+          Utils.ordenarApartamentos(aptos);
+          contenedor.replaceChildren();
+          
+          const hdr = Utils.crearElemento('div', { class: 'text-center mb-4' });
+          const ht = Utils.crearElemento('h3'); ht.textContent = 'Caja: Pagos y Ajustes';
+          hdr.appendChild(ht); contenedor.appendChild(hdr);
+
+          const row = Utils.crearElemento('div', { class: 'row justify-content-center' });
+          const col = Utils.crearElemento('div', { class: 'col-md-8 mb-4' });
+          const card = Utils.crearElemento('div', { class: 'card shadow-sm p-4' });
+          
+          const sApt = Utils.crearElemento('select', { class: 'form-select form-select-lg mb-3' });
+          const opt = Utils.crearElemento('option', { value: '' }); opt.textContent = '-- Apartamento --'; sApt.appendChild(opt);
+          aptos.forEach(a => {
+            const o = Utils.crearElemento('option', { value: a.id }); o.textContent = `Apt. ${a.numero} - ${a.propietario} ($${Number(a.deudaActual).toFixed(2)})`; sApt.appendChild(o);
+          });
+          card.appendChild(sApt);
+
+          const r2 = Utils.crearElemento('div', { class: 'row mb-3' });
+          const cF = Utils.crearElemento('div', { class: 'col-6' });
+          const iF = Utils.crearElemento('input', { type: 'date', class: 'form-control', value: Utils.obtenerFechaHoyISO() });
+          cF.appendChild(iF); r2.appendChild(cF);
+          
+          const cT = Utils.crearElemento('div', { class: 'col-6' });
+          const sTip = Utils.crearElemento('select', { class: 'form-select' });
+          ['Abono', 'Ajuste a favor', 'Ajuste en contra'].forEach(t => {
+            const o = Utils.crearElemento('option', { value: t }); o.textContent = t; sTip.appendChild(o);
+          });
+          cT.appendChild(sTip); r2.appendChild(cT); card.appendChild(r2);
+
+          const r3 = Utils.crearElemento('div', { class: 'row mb-3 align-items-end' });
+          const cMon = Utils.crearElemento('div', { class: 'col-4' });
+          const lblM = Utils.crearElemento('label', { class: 'form-label' }); lblM.textContent = 'Moneda';
+          const sMon = Utils.crearElemento('select', { class: 'form-select' });
+          const oU = Utils.crearElemento('option', { value: 'USD' }); oU.textContent = 'USD';
+          const oB = Utils.crearElemento('option', { value: 'Bs' }); oB.textContent = 'Bs';
+          sMon.appendChild(oU); sMon.appendChild(oB); cMon.appendChild(lblM); cMon.appendChild(sMon); r3.appendChild(cMon);
+
+          const cMon2 = Utils.crearElemento('div', { class: 'col-4' });
+          const lblM2 = Utils.crearElemento('label', { class: 'form-label' }); lblM2.textContent = 'Monto';
+          const iMon = Utils.crearElemento('input', { type: 'number', step: '0.01', class: 'form-control' });
+          cMon2.appendChild(lblM2); cMon2.appendChild(iMon); r3.appendChild(cMon2);
+
+          const cTasa = Utils.crearElemento('div', { class: 'col-4 d-none' });
+          const lblTa = Utils.crearElemento('label', { class: 'form-label' }); lblTa.textContent = 'Tasa BCV';
+          const igTa = Utils.crearElemento('div', { class: 'input-group' });
+          const iTa = Utils.crearElemento('input', { type: 'number', step: '0.0001', class: 'form-control bg-light', readOnly: true });
+          const bTa = Utils.crearElemento('button', { class: 'btn btn-outline-secondary' }); bTa.textContent = '✎';
+          bTa.addEventListener('click', () => { iTa.readOnly = false; iTa.classList.remove('bg-light'); });
+          igTa.appendChild(iTa); igTa.appendChild(bTa); cTasa.appendChild(lblTa); cTasa.appendChild(igTa); r3.appendChild(cTasa);
+          card.appendChild(r3);
+
+          const dRes = Utils.crearElemento('div', { class: 'alert alert-info py-2 d-flex justify-content-between mb-3' });
+          const lRes = Utils.crearElemento('span'); lRes.textContent = 'Monto USD aplicado:';
+          const vRes = Utils.crearElemento('span', { class: 'fw-bold fs-5' }); vRes.textContent = '$0.00';
+          dRes.appendChild(lRes); dRes.appendChild(vRes); card.appendChild(dRes);
+
+          const iObs = Utils.crearElemento('input', { type: 'text', class: 'form-control mb-4', placeholder: 'Referencia / Obs.' }); card.appendChild(iObs);
+          const bP = Utils.crearElemento('button', { class: 'btn btn-primary btn-lg w-100' }); bP.textContent = 'Procesar'; card.appendChild(bP);
+          
+          col.appendChild(card); row.appendChild(col); contenedor.appendChild(row);
+
+          let currentTasa = 1;
+          const calcUSD = () => {
+            const m = parseFloat(iMon.value) || 0; let res = m;
+            if(sMon.value === 'Bs') {
+              const t = parseFloat(iTa.value) || currentTasa;
+              if (t > 0) res = m / t; else res = 0;
+            }
+            vRes.textContent = `$${res.toFixed(2)}`; return res;
+          };
+
+          const checkMon = async () => {
+             if (sMon.value === 'USD') { cTasa.classList.add('d-none'); currentTasa=1; iTa.value=''; }
+             else {
+               cTasa.classList.remove('d-none');
+               if(iF.value) {
+                 try {
+                   iTa.value = '...'; const t = await Utils.consultarTasaBCV(iF.value);
+                   currentTasa = t; iTa.value = t.toFixed(4);
+                 } catch(e) { iTa.value = ''; iTa.readOnly = false; iTa.classList.remove('bg-light'); }
+               }
+             }
+             calcUSD();
+          };
+
+          sMon.addEventListener('change', checkMon); iF.addEventListener('change', checkMon); iMon.addEventListener('input', calcUSD); iTa.addEventListener('input', calcUSD);
+
+          bP.addEventListener('click', async () => {
+            if(!sApt.value) return alert('Seleccione apartamento.');
+            const aBase = aptos.find(x => x.id === sApt.value); const amtUSD = calcUSD();
+            if(amtUSD <= 0) return alert('Monto inválido.');
+            
+            bP.disabled = true;
+            try {
+              let ta = sMon.value === 'Bs' ? parseFloat(iTa.value) : 1;
+              await SecureDoc.data.add({
+                apartamento: aBase.numero, fecha: iF.value, tipo: sTip.value,
+                monedaOriginal: sMon.value, tasaCambio: ta, montoUSD: amtUSD, observacion: iObs.value.trim()
+              });
+
+              let delta = 0;
+              if(sTip.value === 'Abono' || sTip.value === 'Ajuste a favor') delta = -Math.abs(amtUSD);
+              else delta = Math.abs(amtUSD);
+
+              const nd = (parseFloat(aBase.deudaActual)||0) + delta;
+              await SecureDoc.data.update(sApt.value, { deudaActual: nd });
+              
+              alert(`Éxito. Nuevo saldo: $${nd.toFixed(2)}`); this.render(contenedor);
+            } catch(e) { console.error(e); alert('Error procesando'); bP.disabled = false; }
+          });
+
+        } catch(e) { console.error(e); Utils.mostrarError(contenedor, "Error al cargar."); }
+      }
+    };
+
+    // 7. REPORTES
+    const Reportes = {
+      perfil: null,
+      async render(contenedor) {
+        Utils.mostrarCargando(contenedor);
+        try {
+          this.perfil = await Utils.cargarPerfil();
+          const aptos = await SecureDoc.data.list({ where: [['numero', '!=', '']] });
+          Utils.ordenarApartamentos(aptos);
+          contenedor.replaceChildren();
+
+          const hdr = Utils.crearElemento('div', { class: 'd-flex justify-content-between align-items-center mb-4 d-print-none' });
+          const tit = Utils.crearElemento('h3'); tit.textContent = 'Reporte de Deudas por Apartamento';
+          const bImp = Utils.crearElemento('button', { class: 'btn btn-primary btn-lg shadow-sm' }); bImp.textContent = 'Imprimir Cartelera';
+          bImp.addEventListener('click', () => window.print());
+          hdr.appendChild(tit); hdr.appendChild(bImp); contenedor.appendChild(hdr);
+
+          const pCon = Utils.crearElemento('div', { class: 'card shadow-sm p-4 print-container bg-white border-0' });
+          
+          const cabeceraImpresa = Utils.generarCabeceraReporte(this.perfil, 'Estado de Deudas', `Actualizado al: ${new Date().toLocaleDateString('es-VE')}`);
+          pCon.appendChild(cabeceraImpresa);
+
+          const tb = Utils.crearElemento('table', { class: 'table table-bordered table-striped table-sm text-center mb-0' });
+          const th = Utils.crearElemento('thead', { class: 'table-light' });
+          const trh = Utils.crearElemento('tr');
+          const th1 = Utils.crearElemento('th'); th1.textContent = 'Apt.'; trh.appendChild(th1);
+          const th2 = Utils.crearElemento('th', { class: 'text-start' }); th2.textContent = 'Propietario'; trh.appendChild(th2);
+          const th3 = Utils.crearElemento('th'); th3.textContent = 'Deuda (USD)'; trh.appendChild(th3);
+          th.appendChild(trh); tb.appendChild(th);
+
+          const tbo = Utils.crearElemento('tbody');
+          let tDeuda = 0; let nMor = 0;
+
+          aptos.forEach(a => {
+            const tr = Utils.crearElemento('tr');
+            const d1 = Utils.crearElemento('td', { class: 'align-middle fw-bold fs-5' }); d1.textContent = a.numero;
+            const d2 = Utils.crearElemento('td', { class: 'text-start align-middle' }); d2.textContent = a.propietario;
+            
+            const d3 = Utils.crearElemento('td', { class: 'align-middle fs-5' });
+            const d = Number(a.deudaActual)||0;
+            if (d > 0) {
+               d3.textContent = `$${d.toFixed(2)}`; d3.classList.add('deuda-alta'); tDeuda += d; nMor++;
+            } else if (d < 0) {
+               d3.textContent = `A favor $${Math.abs(d).toFixed(2)}`; d3.classList.add('text-success');
+            } else {
+               d3.textContent = 'SOLVENTE'; d3.classList.add('text-success', 'fw-bold', 'small');
+            }
+            tr.appendChild(d1); tr.appendChild(d2); tr.appendChild(d3); tbo.appendChild(tr);
+          });
+          tb.appendChild(tbo);
+
+          if (aptos.length > 0) {
+            const tfo = Utils.crearElemento('tfoot', { class: 'table-light fw-bold' });
+            const trf = Utils.crearElemento('tr');
+            const tf1 = Utils.crearElemento('td', { colspan: '2', class: 'text-end py-3 fs-5' }); tf1.textContent = 'DEUDA TOTAL POR COBRAR:';
+            const tf2 = Utils.crearElemento('td', { class: 'py-3 fs-5' }); tf2.textContent = `$${tDeuda.toFixed(2)}`;
+            trf.appendChild(tf1); trf.appendChild(tf2); tfo.appendChild(trf); tb.appendChild(tfo);
+          }
+          pCon.appendChild(tb);
+
+          const ftr = Utils.crearElemento('div', { class: 'mt-3 d-flex justify-content-between text-muted small' });
+          const sl = Utils.crearElemento('span'); sl.textContent = `Morosos: ${nMor} / ${aptos.length}`;
+          const sr = Utils.crearElemento('span'); sr.textContent = 'Pagos Bs. calculados a tasa BCV fecha pago.';
+          ftr.appendChild(sl); ftr.appendChild(sr); pCon.appendChild(ftr);
+          contenedor.appendChild(pCon);
+        } catch(e) { console.error(e); Utils.mostrarError(contenedor, 'Error generando reporte.'); }
+      }
+    };
+
+    // --- MAIN ---
+    SecureDoc.ready(async (context) => {
+      console.log('SecureDoc Listo. App:', context.app);
+      const contenedor = document.getElementById('app-container');
+      
+      try {
+        const perfil = await Utils.cargarPerfil();
+        const bText = document.getElementById('brand-text');
+        if (perfil && perfil.nombreCondominio) {
+            bText.textContent = perfil.nombreCondominio;
+        }
+      } catch (e) {
+        console.error('Error al cargar perfil inicial:', e);
+      }
+
+      try {
+        const tHoy = await Utils.consultarTasaBCV(Utils.obtenerFechaHoyISO());
+        document.getElementById('tasa-del-dia').textContent = `Tasa BCV hoy: ${tHoy.toFixed(2)}`;
+      } catch (e) {
+        document.getElementById('tasa-del-dia').textContent = `Tasa BCV: N/D`;
+      }
+
+      const navLinks = {
+        'nav-brand': Dashboard, 'nav-dashboard': Dashboard, 'nav-directorio': Directorio,
+        'nav-conceptos': Conceptos, 'nav-presupuestos': Presupuestos, 'nav-cargos': CargosEspeciales,
+        'nav-caja': Caja, 'nav-reportes': Reportes, 'nav-perfil': Perfil
+      };
+
+      const setActive = (id) => {
+        document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active', 'fw-bold'));
+        const el = document.getElementById(id);
+        if(el && el.classList.contains('nav-link')) el.classList.add('active', 'fw-bold');
+      };
+
+      Object.keys(navLinks).forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.addEventListener('click', (e) => {
+             e.preventDefault(); setActive(id); navLinks[id].render(contenedor);
+             const navbarToggler = document.querySelector('.navbar-toggler');
+             const navbarCollapse = document.querySelector('.navbar-collapse');
+             if(window.getComputedStyle(navbarToggler).display !== 'none' && navbarCollapse.classList.contains('show')){
+                navbarToggler.click();
+             }
+          });
+        }
+      });
+
+      setActive('nav-dashboard'); Dashboard.render(contenedor);
+    });
+
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
+</body>
+</html>
