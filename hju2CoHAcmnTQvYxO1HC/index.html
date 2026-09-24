@@ -1,0 +1,2118 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mis Finanzas</title>
+  <!-- Bootstrap 5 CSS via CDN -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <!-- Bootstrap Icons via CDN -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <style>
+    :root {
+      --app-primary: #198754;
+      --app-bg: #f8f9fa;
+    }
+    body {
+      background-color: var(--app-bg);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      min-height: 100vh;
+    }
+    .navbar-brand {
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+    .card {
+      border: none;
+      border-radius: 0.75rem;
+      box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.05);
+    }
+    .metric-value {
+      font-size: 1.65rem;
+      font-weight: 700;
+    }
+    .progress-bar-custom {
+      height: 10px;
+      border-radius: 5px;
+    }
+    .table-sm th, .table-sm td {
+      vertical-align: middle;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Barra de Navegación -->
+  <nav class="navbar navbar-expand-lg navbar-dark bg-success shadow-sm sticky-top">
+    <div class="container-fluid">
+      <span class="navbar-brand d-flex align-items-center gap-2">
+        <i class="bi bi-wallet2 fs-4"></i>
+        <span>Mis Finanzas</span>
+      </span>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNavbar" aria-controls="mainNavbar" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="mainNavbar">
+        <ul class="navbar-nav me-auto mb-2 mb-lg-0" id="navTabsContainer">
+          <li class="nav-item">
+            <button class="nav-link active text-white" id="tab-dashboard" type="button">
+              <i class="bi bi-speedometer2 me-1"></i>Tablero
+            </button>
+          </li>
+          <li class="nav-item">
+            <button class="nav-link text-white-50" id="tab-egresos" type="button">
+              <i class="bi bi-arrow-up-circle me-1"></i>Egresos
+            </button>
+          </li>
+          <li class="nav-item">
+            <button class="nav-link text-white-50" id="tab-ingresos" type="button">
+              <i class="bi bi-arrow-down-circle me-1"></i>Ingresos
+            </button>
+          </li>
+          <li class="nav-item">
+            <button class="nav-link text-white-50" id="tab-presupuestos" type="button">
+              <i class="bi bi-pie-chart me-1"></i>Presupuestos
+            </button>
+          </li>
+          <li class="nav-item">
+            <button class="nav-link text-white-50" id="tab-miembros" type="button">
+              <i class="bi bi-people me-1"></i>Miembros & Grupos
+            </button>
+          </li>
+          <li class="nav-item">
+            <button class="nav-link text-white-50" id="tab-reportes" type="button">
+              <i class="bi bi-file-earmark-bar-graph me-1"></i>Reportes
+            </button>
+          </li>
+        </ul>
+        <div class="d-flex align-items-center text-light bg-success-subtle bg-opacity-25 px-3 py-1 rounded">
+          <i class="bi bi-calendar-event me-2"></i>
+          <label for="globalMonthPicker" class="small me-2 mb-0 fw-semibold text-white">Mes:</label>
+          <input type="month" id="globalMonthPicker" class="form-control form-control-sm border-0 shadow-none" style="width: auto;">
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Contenedor Principal de Alertas -->
+  <div class="container-fluid py-3 px-md-4">
+    <div id="alertsContainer"></div>
+
+    <!-- VISTA: TABLERO PRINCIPAL -->
+    <section id="view-dashboard" class="app-view">
+      <div class="row g-3 mb-4">
+        <div class="col-12 col-md-4">
+          <div class="card p-3 border-start border-success border-4 h-100">
+            <div class="d-flex justify-content-between align-items-center">
+              <div>
+                <span class="text-muted small text-uppercase fw-bold">Ingresos (USD)</span>
+                <div class="metric-value text-success" id="dashTotalIngresos">$0.00</div>
+              </div>
+              <div class="bg-success-subtle p-3 rounded-circle text-success">
+                <i class="bi bi-graph-up-arrow fs-4"></i>
+              </div>
+            </div>
+            <div class="small text-muted mt-2" id="dashIngresosCount">0 registros</div>
+          </div>
+        </div>
+        <div class="col-12 col-md-4">
+          <div class="card p-3 border-start border-danger border-4 h-100">
+            <div class="d-flex justify-content-between align-items-center">
+              <div>
+                <span class="text-muted small text-uppercase fw-bold">Egresos (USD)</span>
+                <div class="metric-value text-danger" id="dashTotalEgresos">$0.00</div>
+              </div>
+              <div class="bg-danger-subtle p-3 rounded-circle text-danger">
+                <i class="bi bi-graph-down-arrow fs-4"></i>
+              </div>
+            </div>
+            <div class="small text-muted mt-2" id="dashEgresosCount">0 registros</div>
+          </div>
+        </div>
+        <div class="col-12 col-md-4">
+          <div class="card p-3 border-start border-primary border-4 h-100">
+            <div class="d-flex justify-content-between align-items-center">
+              <div>
+                <span class="text-muted small text-uppercase fw-bold">Balance Neto</span>
+                <div class="metric-value text-primary" id="dashBalanceNeto">$0.00</div>
+              </div>
+              <div class="bg-primary-subtle p-3 rounded-circle text-primary">
+                <i class="bi bi-cash-stack fs-4"></i>
+              </div>
+            </div>
+            <div class="small text-muted mt-2" id="dashBalanceStatus">En curso</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-3">
+        <!-- Control Presupuestario por Categoría -->
+        <div class="col-12 col-lg-7">
+          <div class="card p-3 h-100">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h6 class="mb-0 fw-bold"><i class="bi bi-bar-chart-steps me-2"></i>Ejecución Presupuestaria por Categoría</h6>
+              <span class="badge bg-light text-dark border" id="dashMonthLabelPresupuesto">--</span>
+            </div>
+            <div id="dashPresupuestoList" class="d-flex flex-column gap-3">
+              <div class="text-muted small text-center py-4">No hay presupuestos registrados para este mes.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Consumo por Miembro / Entidad -->
+        <div class="col-12 col-lg-5">
+          <div class="card p-3 h-100">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h6 class="mb-0 fw-bold"><i class="bi bi-pie-chart-fill me-2"></i>Gasto Imputado por Miembro</h6>
+              <span class="badge bg-light text-dark border" id="dashMonthLabelMiembros">--</span>
+            </div>
+            <div id="dashMiembrosList" class="d-flex flex-column gap-3">
+              <div class="text-muted small text-center py-4">No hay gastos imputados este mes.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- VISTA: REGISTRAR Y LISTAR EGRESOS -->
+    <section id="view-egresos" class="app-view d-none">
+      <div class="row g-3">
+        <!-- Formulario de Egreso (Columna Izquierda en PC) -->
+        <div class="col-12 col-lg-5 col-xl-4">
+          <div class="card p-3">
+            <h6 class="fw-bold mb-3"><i class="bi bi-plus-circle text-danger me-2"></i>Nuevo Egreso</h6>
+            <form id="formEgreso">
+              <div class="row g-2 mb-2">
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold">Fecha</label>
+                  <input type="date" id="egresoFecha" class="form-control form-control-sm" required>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold">Categoría</label>
+                  <select id="egresoCategoria" class="form-select form-select-sm" required>
+                    <option value="">Seleccione Categoría...</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="mb-2">
+                <label class="form-label small fw-semibold">Descripción</label>
+                <input type="text" id="egresoDescripcion" class="form-control form-control-sm" placeholder="Ej. Supermercado semanal, Farmacia" required>
+              </div>
+
+              <div class="row g-2 mb-2">
+                <div class="col-4">
+                  <label class="form-label small fw-semibold">Moneda</label>
+                  <select id="egresoMoneda" class="form-select form-select-sm">
+                    <option value="Bs" selected>Bs</option>
+                    <option value="USD">USD</option>
+                  </select>
+                </div>
+                <div class="col-8">
+                  <label class="form-label small fw-semibold">Monto Original <span class="text-muted fw-normal">(admite +, -, *, /)</span></label>
+                  <input type="text" inputmode="decimal" id="egresoMontoOriginal" class="form-control form-control-sm calc-input" placeholder="Ej. 120+45*2" required>
+                </div>
+              </div>
+
+              <!-- Bloque de Conversión y Tasa -->
+              <div class="p-2 mb-3 bg-light rounded border" id="egresoTasaBox">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <span class="small fw-semibold text-muted" id="egresoTasaLabel">Tasa BCV (Bs/USD):</span>
+                  <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" id="btnConsultarTasaEgreso" title="Reconsultar API">
+                    <i class="bi bi-arrow-clockwise"></i> Consultar
+                  </button>
+                </div>
+                <div class="row g-2 align-items-center">
+                  <div class="col-6">
+                    <div class="input-group input-group-sm">
+                      <span class="input-group-text bg-white">Bs.</span>
+                      <input type="text" inputmode="decimal" id="egresoTasaManual" class="form-control text-end fw-semibold calc-input" value="1.00">
+                    </div>
+                  </div>
+                  <div class="col-6 text-end">
+                    <div class="small text-muted" style="font-size:0.75rem;">Equivalente base:</div>
+                    <span class="fw-bold text-success" id="egresoTotalUSDCalc">$0.00 USD</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Menú Desplegable Único de Distribución / Imputación Rápida -->
+              <div class="mb-3">
+                <label class="form-label small fw-semibold d-block">Distribución / Imputación</label>
+                <select id="egresoDistribucionSelect" class="form-select form-select-sm" required>
+                  <option value="">Cargando opciones...</option>
+                </select>
+                <div class="small text-muted mt-2 ps-1 border-start border-2 border-primary" id="egresoDistribucionPreview"></div>
+              </div>
+
+              <button type="submit" class="btn btn-danger btn-sm w-100" id="btnGuardarEgreso">
+                <i class="bi bi-check-lg me-1"></i>Registrar Egreso
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Listado de Egresos del Mes (Columna Derecha en PC) -->
+        <div class="col-12 col-lg-7 col-xl-8">
+          <div class="card p-3">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h6 class="fw-bold mb-0"><i class="bi bi-list-ul me-2"></i>Egresos Registrados en el Mes</h6>
+              <span class="badge bg-light text-dark border" id="egresosMonthBadge">--</span>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-hover table-sm align-middle">
+                <thead class="table-light small">
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Descripción</th>
+                    <th>Categoría</th>
+                    <th>Original</th>
+                    <th>Monto USD</th>
+                    <th>Imputación</th>
+                    <th class="text-end">Acción</th>
+                  </tr>
+                </thead>
+                <tbody id="tablaEgresosBody" class="small">
+                  <tr>
+                    <td colspan="7" class="text-center text-muted py-4">Sin egresos.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- VISTA: REGISTRAR Y LISTAR INGRESOS -->
+    <section id="view-ingresos" class="app-view d-none">
+      <div class="row g-3">
+        <!-- Formulario Ingreso (Columna Izquierda en PC) -->
+        <div class="col-12 col-lg-5 col-xl-4">
+          <div class="card p-3">
+            <h6 class="fw-bold mb-3"><i class="bi bi-plus-circle text-success me-2"></i>Nuevo Ingreso</h6>
+            <form id="formIngreso">
+              <div class="mb-2">
+                <label class="form-label small fw-semibold">Fecha</label>
+                <input type="date" id="ingresoFecha" class="form-control form-control-sm" required>
+              </div>
+
+              <div class="mb-2">
+                <label class="form-label small fw-semibold">Fuente / Concepto</label>
+                <input type="text" id="ingresoFuente" class="form-control form-control-sm" placeholder="Ej. Sueldo, Remesa, Honorarios" required>
+              </div>
+
+              <div class="mb-2">
+                <label class="form-label small fw-semibold">Miembro Perceptor</label>
+                <select id="ingresoMiembro" class="form-select form-select-sm" required>
+                  <option value="">Selecciona Miembro...</option>
+                </select>
+              </div>
+
+              <div class="row g-2 mb-2">
+                <div class="col-4">
+                  <label class="form-label small fw-semibold">Moneda</label>
+                  <select id="ingresoMoneda" class="form-select form-select-sm">
+                    <option value="Bs" selected>Bs</option>
+                    <option value="USD">USD</option>
+                  </select>
+                </div>
+                <div class="col-8">
+                  <label class="form-label small fw-semibold">Monto Original <span class="text-muted fw-normal">(admite +, -, *, /)</span></label>
+                  <input type="text" inputmode="decimal" id="ingresoMontoOriginal" class="form-control form-control-sm calc-input" placeholder="Ej. 50*1.16" required>
+                </div>
+              </div>
+
+              <div class="p-2 mb-3 bg-light rounded border" id="ingresoTasaBox">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <span class="small fw-semibold text-muted" id="ingresoTasaLabel">Tasa BCV (Bs/USD):</span>
+                  <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" id="btnConsultarTasaIngreso" title="Reconsultar API">
+                    <i class="bi bi-arrow-clockwise"></i> Consultar
+                  </button>
+                </div>
+                <div class="row g-2 align-items-center">
+                  <div class="col-6">
+                    <div class="input-group input-group-sm">
+                      <span class="input-group-text bg-white">Bs.</span>
+                      <input type="text" inputmode="decimal" id="ingresoTasaManual" class="form-control text-end fw-semibold calc-input" value="1.00">
+                    </div>
+                  </div>
+                  <div class="col-6 text-end">
+                    <div class="small text-muted" style="font-size:0.75rem;">Equivalente base:</div>
+                    <span class="fw-bold text-success" id="ingresoTotalUSDCalc">$0.00 USD</span>
+                  </div>
+                </div>
+              </div>
+
+              <button type="submit" class="btn btn-success btn-sm w-100" id="btnGuardarIngreso">
+                <i class="bi bi-check-lg me-1"></i>Registrar Ingreso
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Listado de Ingresos (Columna Derecha en PC) -->
+        <div class="col-12 col-lg-7 col-xl-8">
+          <div class="card p-3">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h6 class="fw-bold mb-0"><i class="bi bi-list-ul me-2"></i>Ingresos del Mes</h6>
+              <span class="badge bg-light text-dark border" id="ingresosMonthBadge">--</span>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-hover table-sm align-middle">
+                <thead class="table-light small">
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Fuente</th>
+                    <th>Miembro</th>
+                    <th>Original</th>
+                    <th>Tasa</th>
+                    <th>Monto USD</th>
+                    <th class="text-end">Acción</th>
+                  </tr>
+                </thead>
+                <tbody id="tablaIngresosBody" class="small">
+                  <tr>
+                    <td colspan="7" class="text-center text-muted py-4">Sin ingresos.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- VISTA: CATEGORIAS Y PRESUPUESTOS -->
+    <section id="view-presupuestos" class="app-view d-none">
+      <div class="row g-3">
+        <!-- Gestión de Categorías -->
+        <div class="col-12 col-md-5">
+          <div class="card p-3 mb-3">
+            <h6 class="fw-bold mb-3"><i class="bi bi-tag me-2"></i>Crear Categoría Global</h6>
+            <form id="formCategoria">
+              <div class="mb-2">
+                <label class="form-label small fw-semibold">Nombre de Categoría</label>
+                <input type="text" id="categoriaNombre" class="form-control form-control-sm" placeholder="Ej. Alimentación, Salud, Educación" required>
+              </div>
+              <div class="mb-2">
+                <label class="form-label small fw-semibold">Descripción</label>
+                <input type="text" id="categoriaDescripcion" class="form-control form-control-sm" placeholder="Detalle opcional">
+              </div>
+              <button type="submit" class="btn btn-outline-success btn-sm w-100">
+                <i class="bi bi-plus-lg me-1"></i>Guardar Categoría
+              </button>
+            </form>
+          </div>
+
+          <div class="card p-3">
+            <h6 class="fw-bold mb-2 small text-uppercase text-muted">Categorías Registradas</h6>
+            <ul class="list-group list-group-flush small" id="listaCategorias">
+              <li class="list-group-item text-muted text-center py-3">No hay categorías registradas.</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Presupuesto Mensual -->
+        <div class="col-12 col-md-7">
+          <div class="card p-3">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h6 class="fw-bold mb-0"><i class="bi bi-piggy-bank me-2"></i>Presupuesto por Categoría</h6>
+              <span class="badge bg-light text-dark border" id="presupuestoMonthBadge">--</span>
+            </div>
+            <p class="text-muted small">
+              Define el monto máximo en USD proyectado (admite cálculos ej. `150*2`).
+            </p>
+
+            <form id="formPresupuesto" class="row g-2 mb-3 bg-light p-2 rounded border">
+              <div class="col-12 col-sm-6">
+                <label class="form-label small fw-semibold">Categoría</label>
+                <select id="presupuestoCategoriaSelect" class="form-select form-select-sm" required>
+                  <option value="">Seleccionar...</option>
+                </select>
+              </div>
+              <div class="col-12 col-sm-4">
+                <label class="form-label small fw-semibold">Límite USD</label>
+                <input type="text" inputmode="decimal" id="presupuestoMontoUSD" class="form-control form-control-sm calc-input" placeholder="Ej. 150*2" required>
+              </div>
+              <div class="col-12 col-sm-2 d-flex align-items-end">
+                <button type="submit" class="btn btn-success btn-sm w-100">Fijar</button>
+              </div>
+            </form>
+
+            <div class="table-responsive">
+              <table class="table table-hover table-sm align-middle">
+                <thead class="table-light small">
+                  <tr>
+                    <th>Categoría</th>
+                    <th>Tope Presupuestado (USD)</th>
+                    <th class="text-end">Acción</th>
+                  </tr>
+                </thead>
+                <tbody id="tablaPresupuestosBody" class="small">
+                  <tr>
+                    <td colspan="3" class="text-center text-muted py-4">No hay presupuestos para este mes.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- VISTA: MIEMBROS Y GRUPOS DE IMPUTACIÓN -->
+    <section id="view-miembros" class="app-view d-none">
+      <div class="row g-3">
+        <!-- Miembros -->
+        <div class="col-12 col-lg-6">
+          <div class="card p-3 mb-3">
+            <h6 class="fw-bold mb-3"><i class="bi bi-person-plus me-2"></i>Registrar Miembro o Dependiente</h6>
+            <form id="formMiembro">
+              <div class="row g-2 mb-2">
+                <div class="col-sm-7">
+                  <label class="form-label small fw-semibold">Nombre y Apellido</label>
+                  <input type="text" id="miembroNombre" class="form-control form-control-sm" placeholder="Ej. Francisco, Diego, Pelusa" required>
+                </div>
+                <div class="col-sm-5">
+                  <label class="form-label small fw-semibold">Parentesco</label>
+                  <select id="miembroParentesco" class="form-select form-select-sm">
+                    <option value="Propia">Cuenta Propia</option>
+                    <option value="Cónyuge">Cónyuge</option>
+                    <option value="Hijo/a">Hijo/a</option>
+                    <option value="Padre/Madre">Padre/Madre</option>
+                    <option value="Mascota">Mascota</option>
+                    <option value="Otro">Otro</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" id="miembroActivo" checked>
+                <label class="form-check-label small" for="miembroActivo">Miembro activo en cálculos y repartos</label>
+              </div>
+              <button type="submit" class="btn btn-outline-success btn-sm w-100">
+                <i class="bi bi-check2 me-1"></i>Guardar Miembro
+              </button>
+            </form>
+          </div>
+
+          <div class="card p-3">
+            <h6 class="fw-bold mb-2 small text-uppercase text-muted">Listado de Miembros</h6>
+            <ul class="list-group list-group-flush small" id="listaMiembros">
+              <li class="list-group-item text-muted text-center py-3">No hay miembros registrados.</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Grupos de Imputación -->
+        <div class="col-12 col-lg-6">
+          <div class="card p-3 mb-3">
+            <h6 class="fw-bold mb-2"><i class="bi bi-collection me-2"></i>Configurar Grupo de Imputación</h6>
+            <p class="text-muted small mb-2">Crea distribuciones especiales (ej. 'Casa 70/30' o 'Hijos'). Sus porcentajes deben sumar 100%.</p>
+            <form id="formGrupo">
+              <div class="mb-2">
+                <label class="form-label small fw-semibold">Nombre del Grupo de Distribución</label>
+                <input type="text" id="grupoNombre" class="form-control form-control-sm" placeholder="Ej. Casa 70/30, Gastos Mascotas" required>
+              </div>
+
+              <label class="form-label small fw-semibold d-block">Asignar Porcentajes (admite +, -, *, /)</label>
+              <div class="border rounded p-2 bg-light mb-2" style="max-height: 180px; overflow-y: auto;">
+                <div id="grupoMiembrosInputsContainer" class="d-flex flex-column gap-1">
+                  <!-- Inputs dinámicos -->
+                </div>
+              </div>
+              <div class="d-flex justify-content-between align-items-center mb-2 px-1">
+                <span class="small fw-semibold">Suma:</span>
+                <span class="badge bg-danger" id="badgeGrupoSumaPorcentaje">0%</span>
+              </div>
+              <button type="submit" class="btn btn-outline-primary btn-sm w-100" id="btnGuardarGrupo">
+                <i class="bi bi-save me-1"></i>Crear / Guardar Grupo
+              </button>
+            </form>
+          </div>
+
+          <div class="card p-3">
+            <h6 class="fw-bold mb-2 small text-uppercase text-muted">Grupos Predefinidos</h6>
+            <ul class="list-group list-group-flush small" id="listaGrupos">
+              <li class="list-group-item text-muted text-center py-3">No hay grupos creados.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- VISTA: REPORTES Y ESTADOS DE CUENTA -->
+    <section id="view-reportes" class="app-view d-none">
+      <div class="card p-3 mb-3">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <div>
+            <h5 class="fw-bold mb-0"><i class="bi bi-file-earmark-text text-success me-2"></i>Estado de Cuenta Individual</h5>
+            <span class="text-muted small">Desglose de gastos imputados a cada familiar en el mes</span>
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            <label for="filtroReporteMiembro" class="small fw-semibold mb-0">Miembro:</label>
+            <select id="filtroReporteMiembro" class="form-select form-select-sm" style="min-width: 180px;">
+              <option value="">Selecciona Miembro...</option>
+            </select>
+            <button class="btn btn-outline-secondary btn-sm" id="btnImprimirReporte" type="button">
+              <i class="bi bi-printer me-1"></i>Imprimir
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-3">
+        <div class="col-12 col-lg-7">
+          <div class="card p-3">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h6 class="fw-bold mb-0" id="reporteMiembroTitle">Gastos Asignados</h6>
+              <span class="badge bg-danger fs-6" id="reporteTotalImputadoUSD">$0.00 USD</span>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-sm table-striped align-middle">
+                <thead class="table-light small">
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Concepto</th>
+                    <th>Categoría</th>
+                    <th>% Imputado</th>
+                    <th class="text-end">Total Asumido (USD)</th>
+                  </tr>
+                </thead>
+                <tbody id="tablaReporteMiembroBody" class="small">
+                  <tr>
+                    <td colspan="5" class="text-center text-muted py-4">Seleccione un miembro para ver su estado de cuenta.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12 col-lg-5">
+          <div class="card p-3">
+            <h6 class="fw-bold mb-3"><i class="bi bi-clipboard-data me-2"></i>Resumen General: Presupuesto vs Real</h6>
+            <div class="table-responsive">
+              <table class="table table-sm align-middle">
+                <thead class="table-light small">
+                  <tr>
+                    <th>Categoría</th>
+                    <th>Presupuesto</th>
+                    <th>Ejecutado</th>
+                    <th>Diferencia</th>
+                  </tr>
+                </thead>
+                <tbody id="tablaComparativaPresupuestoBody" class="small">
+                  <tr>
+                    <td colspan="4" class="text-center text-muted py-4">Sin datos disponibles.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    (function () {
+      "use strict";
+
+      // =========================================================================
+      // EVALUADOR ARITMÉTICO SEGURO
+      // =========================================================================
+      function safeEvalArithmetic(expr) {
+        if (typeof expr !== "string") return parseFloat(expr) || 0;
+        let str = expr.replace(/\s+/g, "").replace(/,/g, ".");
+        if (!str) return 0;
+
+        const tokens = [];
+        let i = 0;
+        while (i < str.length) {
+          const ch = str[i];
+          if ("+-*/()".indexOf(ch) !== -1) {
+            tokens.push(ch);
+            i++;
+          } else if ((ch >= "0" && ch <= "9") || ch === ".") {
+            let numStr = "";
+            while (i < str.length && ((str[i] >= "0" && str[i] <= "9") || str[i] === ".")) {
+              numStr += str[i];
+              i++;
+            }
+            tokens.push(parseFloat(numStr));
+          } else {
+            return null; 
+          }
+        }
+
+        let pos = 0;
+        function parseExpression() {
+          let val = parseTerm();
+          while (pos < tokens.length && (tokens[pos] === "+" || tokens[pos] === "-")) {
+            const op = tokens[pos++];
+            const nextVal = parseTerm();
+            if (op === "+") val += nextVal;
+            else val -= nextVal;
+          }
+          return val;
+        }
+
+        function parseTerm() {
+          let val = parseFactor();
+          while (pos < tokens.length && (tokens[pos] === "*" || tokens[pos] === "/")) {
+            const op = tokens[pos++];
+            const nextVal = parseFactor();
+            if (op === "*") val *= nextVal;
+            else {
+              if (nextVal === 0) throw new Error("División por 0");
+              val /= nextVal;
+            }
+          }
+          return val;
+        }
+
+        function parseFactor() {
+          if (pos >= tokens.length) return 0;
+          const token = tokens[pos++];
+          if (typeof token === "number") return token;
+          if (token === "(") {
+            const val = parseExpression();
+            if (tokens[pos] === ")") pos++;
+            return val;
+          }
+          if (token === "-") return -parseFactor();
+          if (token === "+") return parseFactor();
+          return 0;
+        }
+
+        try {
+          const res = parseExpression();
+          return isNaN(res) ? null : res;
+        } catch (e) {
+          return null;
+        }
+      }
+
+      // Delegación de eventos para calculadora en inputs numéricos
+      document.addEventListener("focusout", function(e) {
+        if (e.target && e.target.classList.contains("calc-input")) {
+          const val = e.target.value.trim();
+          if (/[+\-*/()]/.test(val)) {
+            const calculated = safeEvalArithmetic(val);
+            if (calculated !== null && isFinite(calculated)) {
+              e.target.value = Number.isInteger(calculated) ? calculated.toString() : parseFloat(calculated.toFixed(4)).toString();
+              e.target.dispatchEvent(new Event("input", { bubbles: true }));
+            }
+          }
+        }
+      });
+      document.addEventListener("keydown", function(e) {
+        if (e.key === "Enter" && e.target && e.target.classList.contains("calc-input")) {
+          e.preventDefault();
+          e.target.blur();
+        }
+      });
+
+      const AppState = {
+        currentMonth: "",
+        miembros: [],
+        grupos: [],
+        categorias: [],
+        presupuestos: [],
+        ingresos: [],
+        egresos: [],
+        distribuciones: [],
+        tasaBCV: 36.50
+      };
+
+      function getTodayStr() {
+        const d = new Date();
+        return d.getFullYear() + "-" + 
+               String(d.getMonth() + 1).padStart(2, '0') + "-" + 
+               String(d.getDate()).padStart(2, '0');
+      }
+
+      AppState.currentMonth = getTodayStr().substring(0, 7);
+      document.getElementById("globalMonthPicker").value = AppState.currentMonth;
+
+      function showAlert(message, type = "info") {
+        const container = document.getElementById("alertsContainer");
+        const alertDiv = document.createElement("div");
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show shadow-sm`;
+        alertDiv.setAttribute("role", "alert");
+
+        const msgSpan = document.createElement("span");
+        msgSpan.textContent = message;
+        alertDiv.appendChild(msgSpan);
+
+        const btnClose = document.createElement("button");
+        btnClose.type = "button";
+        btnClose.className = "btn-close";
+        btnClose.setAttribute("data-bs-dismiss", "alert");
+        btnClose.setAttribute("aria-label", "Close");
+        alertDiv.appendChild(btnClose);
+
+        container.appendChild(alertDiv);
+        setTimeout(() => {
+          if (alertDiv.parentNode) {
+            alertDiv.classList.remove("show");
+            setTimeout(() => alertDiv.remove(), 150);
+          }
+        }, 5000);
+      }
+
+      // --- API EXTERNA CON CACHE ---
+      const tasaCache = {};
+
+      async function getTasaDolar(fechaStr) {
+        if (!fechaStr) fechaStr = getTodayStr();
+        if (tasaCache[fechaStr]) return tasaCache[fechaStr];
+
+        let currentStr = fechaStr;
+        for (let i = 0; i < 15; i++) {
+          const parts = currentStr.split('-');
+          if (parts.length === 3) {
+            try {
+              const res = await fetch(`https://ve.dolarapi.com/v1/historicos/dolares/oficial/${parts[0]}/${parts[1]}/${parts[2]}`);
+              if (res.ok) {
+                const data = await res.json();
+                if (data && typeof data.promedio === 'number') {
+                  tasaCache[fechaStr] = data.promedio;
+                  return data.promedio;
+                }
+              }
+            } catch (e) {
+              if (e instanceof TypeError) {
+                throw new Error("No se puede consultar este servicio desde una página web. (Error de red/CORS). Intente desactivar bloqueadores.");
+              }
+            }
+          }
+          const dt = new Date(currentStr + "T12:00:00");
+          dt.setDate(dt.getDate() - 1);
+          currentStr = dt.getFullYear() + "-" + 
+                       String(dt.getMonth() + 1).padStart(2, '0') + "-" + 
+                       String(dt.getDate()).padStart(2, '0');
+        }
+        throw new Error("No se pudo obtener la tasa de cambio tras 15 intentos retroactivos.");
+      }
+
+      async function consultarYActualizarTasa(fechaStr, tipo) {
+        try {
+          const tasa = await getTasaDolar(fechaStr);
+          AppState.tasaBCV = tasa;
+          if (tipo === "egreso" || !tipo) {
+            document.getElementById("egresoTasaManual").value = tasa.toFixed(4);
+            actualizarCalculoMonto("egreso");
+          }
+          if (tipo === "ingreso" || !tipo) {
+            document.getElementById("ingresoTasaManual").value = tasa.toFixed(4);
+            actualizarCalculoMonto("ingreso");
+          }
+          showAlert(`Tasa oficial obtenida (${fechaStr}): ${tasa.toFixed(4)} Bs/USD`, "success");
+        } catch (err) {
+          showAlert(err.message || "Error al consultar la tasa oficial.", "warning");
+        }
+      }
+
+      const navTabs = [
+        { btnId: "tab-dashboard", viewId: "view-dashboard" },
+        { btnId: "tab-egresos", viewId: "view-egresos" },
+        { btnId: "tab-ingresos", viewId: "view-ingresos" },
+        { btnId: "tab-presupuestos", viewId: "view-presupuestos" },
+        { btnId: "tab-miembros", viewId: "view-miembros" },
+        { btnId: "tab-reportes", viewId: "view-reportes" }
+      ];
+
+      function navigateTo(btnId, viewId) {
+        navTabs.forEach(t => {
+          const btn = document.getElementById(t.btnId);
+          const view = document.getElementById(t.viewId);
+          if (t.btnId === btnId) {
+            btn.classList.add("active", "text-white");
+            btn.classList.remove("text-white-50");
+            view.classList.remove("d-none");
+          } else {
+            btn.classList.remove("active", "text-white");
+            btn.classList.add("text-white-50");
+            view.classList.add("d-none");
+          }
+        });
+        renderAllViews();
+      }
+
+      navTabs.forEach(t => {
+        document.getElementById(t.btnId).addEventListener("click", () => navigateTo(t.btnId, t.viewId));
+      });
+
+      document.getElementById("globalMonthPicker").addEventListener("change", (e) => {
+        if (e.target.value) {
+          AppState.currentMonth = e.target.value;
+          renderAllViews();
+        }
+      });
+
+      function isInCurrentMonth(dateStr) {
+        if (!dateStr) return false;
+        return dateStr.startsWith(AppState.currentMonth);
+      }
+
+      function formatUSD(amount) {
+        const val = Number(amount) || 0;
+        return "$" + val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      }
+
+      if (typeof SecureDoc === "undefined") {
+        showAlert("Error: SecureDoc SDK no disponible.", "danger");
+        return;
+      }
+
+      SecureDoc.ready(async function (context) {
+        const todayISO = getTodayStr();
+        document.getElementById("egresoFecha").value = todayISO;
+        document.getElementById("ingresoFecha").value = todayISO;
+
+        document.getElementById("egresoTasaManual").value = AppState.tasaBCV.toFixed(4);
+        document.getElementById("ingresoTasaManual").value = AppState.tasaBCV.toFixed(4);
+
+        actualizarCalculoMonto("egreso");
+        actualizarCalculoMonto("ingreso");
+        consultarYActualizarTasa(todayISO);
+
+        SecureDoc.data.watch({}, (allDocs) => {
+          const docs = Array.isArray(allDocs) ? allDocs : [];
+
+          AppState.miembros = docs
+            .filter(d => d.entidad === "Miembro")
+            .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""));
+
+          AppState.grupos = docs
+            .filter(d => d.entidad === "GrupoImputacion")
+            .sort((a, b) => (a.nombreGrupo || "").localeCompare(b.nombreGrupo || ""));
+
+          AppState.categorias = docs
+            .filter(d => d.entidad === "Categoria")
+            .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""));
+
+          AppState.presupuestos = docs
+            .filter(d => d.entidad === "PresupuestoMensual");
+
+          AppState.ingresos = docs
+            .filter(d => d.entidad === "Ingreso")
+            .sort((a, b) => (b.fecha || "").localeCompare(a.fecha || ""));
+
+          AppState.egresos = docs
+            .filter(d => d.entidad === "Egreso")
+            .sort((a, b) => (b.fecha || "").localeCompare(a.fecha || ""));
+
+          AppState.distribuciones = docs
+            .filter(d => d.entidad === "DistribucionEgreso");
+
+          poblarSelectoresGlobales();
+          renderAllViews();
+        }, (err) => {
+          showAlert("Error sincronizando base de datos: " + (err.message || err.code), "danger");
+        });
+
+        setupEventListeners();
+      });
+
+      function renderAllViews() {
+        const badges = [
+          "dashMonthLabelPresupuesto", "dashMonthLabelMiembros",
+          "egresosMonthBadge", "ingresosMonthBadge", "presupuestoMonthBadge"
+        ];
+        badges.forEach(bId => {
+          const el = document.getElementById(bId);
+          if (el) el.textContent = AppState.currentMonth;
+        });
+
+        renderDashboardView();
+        renderEgresosView();
+        renderIngresosView();
+        renderCategoriasView();
+        renderPresupuestosView();
+        renderMiembrosView();
+        renderGruposView();
+        renderReportesView();
+      }
+
+      function poblarSelectoresGlobales() {
+        // Miembros (Ingresos y Reportes)
+        const selectIngreso = document.getElementById("ingresoMiembro");
+        const selectReporte = document.getElementById("filtroReporteMiembro");
+        const selIngVal = selectIngreso.value;
+        const selRepVal = selectReporte.value;
+        selectIngreso.innerHTML = '<option value="">Selecciona Miembro...</option>';
+        selectReporte.innerHTML = '<option value="">Selecciona Miembro...</option>';
+        AppState.miembros.forEach(m => {
+          const opt1 = document.createElement("option");
+          opt1.value = m.nombre;
+          opt1.textContent = m.nombre + (m.parentesco ? ` (${m.parentesco})` : "");
+          selectIngreso.appendChild(opt1);
+          const opt2 = document.createElement("option");
+          opt2.value = m.nombre;
+          opt2.textContent = m.nombre;
+          selectReporte.appendChild(opt2);
+        });
+        selectIngreso.value = selIngVal;
+        selectReporte.value = selRepVal;
+
+        // Categorías
+        const selectEgresoCat = document.getElementById("egresoCategoria");
+        const selectPresupuestoCat = document.getElementById("presupuestoCategoriaSelect");
+        const valE = selectEgresoCat.value;
+        const valP = selectPresupuestoCat.value;
+        selectEgresoCat.innerHTML = '<option value="">Seleccione Categoría...</option>';
+        selectPresupuestoCat.innerHTML = '<option value="">Seleccionar...</option>';
+        AppState.categorias.forEach(c => {
+          const opt1 = document.createElement("option");
+          opt1.value = c.nombre;
+          opt1.textContent = c.nombre;
+          selectEgresoCat.appendChild(opt1);
+          const opt2 = document.createElement("option");
+          opt2.value = c.nombre;
+          opt2.textContent = c.nombre;
+          selectPresupuestoCat.appendChild(opt2);
+        });
+        selectEgresoCat.value = valE;
+        selectPresupuestoCat.value = valP;
+
+        // Generar Inputs dinámicos en configuración de Grupos
+        generarInputsGrupoMiembros();
+
+        // Generar Selector Unificado de Distribución en Egresos
+        poblarSelectorDistribucion();
+      }
+
+      // =========================================================================
+      // LÓGICA DE DISTRIBUCIÓN (Menú desplegable unificado y auto-ordenado)
+      // =========================================================================
+      function poblarSelectorDistribucion() {
+        const select = document.getElementById("egresoDistribucionSelect");
+        const prevVal = select.value;
+        select.innerHTML = '<option value="">Selecciona cómo distribuir el gasto...</option>';
+
+        const activos = AppState.miembros.filter(m => m.activo !== false);
+        if (activos.length === 0) return;
+
+        const opciones = [];
+        opciones.push({ id: "todos", label: "Todos a partes iguales", type: "global" });
+        
+        AppState.grupos.forEach(g => {
+          opciones.push({ id: "grupo_" + g.id, label: "Grupo: " + g.nombreGrupo, type: "grupo" });
+        });
+        
+        activos.forEach(m => {
+          opciones.push({ id: "miembro_" + m.nombre, label: "Directo a: " + m.nombre, type: "miembro" });
+        });
+
+        // Calcular frecuencias de uso en los egresos guardados
+        const freq = {};
+        AppState.egresos.forEach(e => {
+          if (e.metodoDistribucion) {
+            freq[e.metodoDistribucion] = (freq[e.metodoDistribucion] || 0) + 1;
+          }
+        });
+        opciones.forEach(op => { op.freq = freq[op.id] || 0; });
+
+        // Identificar el Top 3 de mayor uso
+        const usadas = opciones.filter(op => op.freq > 0).sort((a, b) => b.freq - a.freq);
+        const top3 = usadas.slice(0, 3);
+        const top3Ids = new Set(top3.map(op => op.id));
+
+        if (top3.length > 0) {
+          const optgTop = document.createElement("optgroup");
+          optgTop.label = "🌟 Opciones más utilizadas";
+          top3.forEach(op => {
+            const o = document.createElement("option");
+            o.value = op.id;
+            o.textContent = op.label;
+            optgTop.appendChild(o);
+          });
+          select.appendChild(optgTop);
+        }
+
+        const optgAll = document.createElement("optgroup");
+        optgAll.label = "Todas las opciones disponibles";
+        
+        const resto = opciones.filter(op => !top3Ids.has(op.id)).sort((a, b) => {
+          if (a.type === "global") return -1;
+          if (b.type === "global") return 1;
+          if (a.type === "grupo" && b.type === "miembro") return -1;
+          if (a.type === "miembro" && b.type === "grupo") return 1;
+          return a.label.localeCompare(b.label);
+        });
+
+        resto.forEach(op => {
+          const o = document.createElement("option");
+          o.value = op.id;
+          o.textContent = op.label;
+          optgAll.appendChild(o);
+        });
+        select.appendChild(optgAll);
+
+        if (prevVal && opciones.some(o => o.id === prevVal)) {
+          select.value = prevVal;
+        }
+        actualizarPreviewDistribucion();
+      }
+
+      function actualizarPreviewDistribucion() {
+        const select = document.getElementById("egresoDistribucionSelect");
+        const preview = document.getElementById("egresoDistribucionPreview");
+        const val = select.value;
+        
+        if (!val) {
+          preview.textContent = "Selecciona una opción para ver la vista previa.";
+          return;
+        }
+
+        const activos = AppState.miembros.filter(m => m.activo !== false);
+        if (val === "todos") {
+          const pct = (100 / activos.length).toFixed(2);
+          preview.textContent = activos.map(m => `${m.nombre} (${pct}%)`).join(", ");
+        } else if (val.startsWith("grupo_")) {
+          const gid = val.replace("grupo_", "");
+          const g = AppState.grupos.find(x => x.id === gid);
+          if (g) {
+            try {
+              const parsed = JSON.parse(g.miembrosYPorcentajes);
+              preview.textContent = Object.entries(parsed).map(([m, p]) => `${m} (${p}%)`).join(", ");
+            } catch(e) {
+              preview.textContent = "Error leyendo porcentajes del grupo.";
+            }
+          } else {
+            preview.textContent = "El grupo seleccionado ya no existe.";
+          }
+        } else if (val.startsWith("miembro_")) {
+          const mname = val.replace("miembro_", "");
+          preview.textContent = `Se imputará el 100% a ${mname}.`;
+        }
+      }
+      
+      document.getElementById("egresoDistribucionSelect").addEventListener("change", actualizarPreviewDistribucion);
+
+      function actualizarCalculoMonto(tipo) {
+        const prefix = tipo === "egreso" ? "egreso" : "ingreso";
+        const moneda = document.getElementById(`${prefix}Moneda`).value;
+        const montoOrig = safeEvalArithmetic(document.getElementById(`${prefix}MontoOriginal`).value) || 0;
+
+        const inputTasa = document.getElementById(`${prefix}TasaManual`);
+        const totalUSDEl = document.getElementById(`${prefix}TotalUSDCalc`);
+        const boxTasa = document.getElementById(`${prefix}TasaBox`);
+        const labelTasa = document.getElementById(`${prefix}TasaLabel`);
+        const btnConsultar = document.getElementById(`btnConsultarTasa${tipo === 'egreso' ? 'Egreso' : 'Ingreso'}`);
+
+        let tasa = 1.0;
+        let totalUSD = 0;
+
+        if (moneda === "Bs") {
+          inputTasa.disabled = false;
+          btnConsultar.disabled = false;
+          boxTasa.classList.add("border-success-subtle", "bg-white");
+          labelTasa.textContent = "Tasa BCV (Bs/USD):";
+
+          tasa = safeEvalArithmetic(inputTasa.value);
+          if (!tasa || tasa <= 0) {
+            tasa = AppState.tasaBCV || 1.0;
+            inputTasa.value = tasa.toFixed(4);
+          }
+          totalUSD = tasa > 0 ? (montoOrig / tasa) : 0;
+        } else {
+          inputTasa.value = "1.0000";
+          inputTasa.disabled = true;
+          btnConsultar.disabled = true;
+          boxTasa.classList.remove("border-success-subtle", "bg-white");
+          labelTasa.textContent = "Moneda USD (Tasa fija 1.0):";
+          tasa = 1.0;
+          totalUSD = montoOrig;
+        }
+
+        totalUSDEl.textContent = `${formatUSD(totalUSD)} USD`;
+      }
+
+      function generarInputsGrupoMiembros() {
+        const container = document.getElementById("grupoMiembrosInputsContainer");
+        container.innerHTML = "";
+        const activos = AppState.miembros.filter(m => m.activo !== false);
+
+        if (activos.length === 0) {
+          const empty = document.createElement("div");
+          empty.className = "text-muted small text-center py-2";
+          empty.textContent = "Primero crea miembros activos.";
+          container.appendChild(empty);
+          return;
+        }
+
+        activos.forEach(m => {
+          const row = document.createElement("div");
+          row.className = "d-flex justify-content-between align-items-center mb-1 gap-2";
+
+          const label = document.createElement("span");
+          label.className = "small text-truncate";
+          label.textContent = m.nombre;
+
+          const inputGroup = document.createElement("div");
+          inputGroup.className = "input-group input-group-sm";
+          inputGroup.style.width = "105px";
+
+          const input = document.createElement("input");
+          input.type = "text";
+          input.inputMode = "decimal";
+          input.value = "0";
+          input.dataset.miembro = m.nombre;
+          input.className = "form-control form-control-sm text-end input-grupo-pct calc-input";
+
+          input.addEventListener("input", calcularSumaGrupoPorcentajes);
+
+          const sym = document.createElement("span");
+          sym.className = "input-group-text";
+          sym.textContent = "%";
+
+          inputGroup.appendChild(input);
+          inputGroup.appendChild(sym);
+          row.appendChild(label);
+          row.appendChild(inputGroup);
+          container.appendChild(row);
+        });
+
+        calcularSumaGrupoPorcentajes();
+      }
+
+      function calcularSumaGrupoPorcentajes() {
+        const inputs = document.querySelectorAll(".input-grupo-pct");
+        let sum = 0;
+        inputs.forEach(i => {
+          const val = safeEvalArithmetic(i.value) || 0;
+          sum += val;
+        });
+        const badge = document.getElementById("badgeGrupoSumaPorcentaje");
+        const rounded = Math.round(sum * 100) / 100;
+        badge.textContent = `${rounded}%`;
+        badge.className = Math.abs(rounded - 100) < 0.01 ? "badge bg-success" : "badge bg-danger";
+      }
+
+      function setupEventListeners() {
+        // Fechas - Actualizar tasas
+        document.getElementById("egresoFecha").addEventListener("change", (e) => {
+          if (document.getElementById("egresoMoneda").value === "Bs") {
+            consultarYActualizarTasa(e.target.value, "egreso");
+          }
+        });
+        document.getElementById("ingresoFecha").addEventListener("change", (e) => {
+          if (document.getElementById("ingresoMoneda").value === "Bs") {
+            consultarYActualizarTasa(e.target.value, "ingreso");
+          }
+        });
+
+        // Egresos Inputs
+        document.getElementById("egresoMoneda").addEventListener("change", () => {
+          actualizarCalculoMonto("egreso");
+          if (document.getElementById("egresoMoneda").value === "Bs") {
+            consultarYActualizarTasa(document.getElementById("egresoFecha").value, "egreso");
+          }
+        });
+        document.getElementById("egresoMontoOriginal").addEventListener("input", () => actualizarCalculoMonto("egreso"));
+        document.getElementById("egresoTasaManual").addEventListener("input", () => actualizarCalculoMonto("egreso"));
+        document.getElementById("btnConsultarTasaEgreso").addEventListener("click", () => {
+          consultarYActualizarTasa(document.getElementById("egresoFecha").value, "egreso");
+        });
+
+        // Ingresos Inputs
+        document.getElementById("ingresoMoneda").addEventListener("change", () => {
+          actualizarCalculoMonto("ingreso");
+          if (document.getElementById("ingresoMoneda").value === "Bs") {
+            consultarYActualizarTasa(document.getElementById("ingresoFecha").value, "ingreso");
+          }
+        });
+        document.getElementById("ingresoMontoOriginal").addEventListener("input", () => actualizarCalculoMonto("ingreso"));
+        document.getElementById("ingresoTasaManual").addEventListener("input", () => actualizarCalculoMonto("ingreso"));
+        document.getElementById("btnConsultarTasaIngreso").addEventListener("click", () => {
+          consultarYActualizarTasa(document.getElementById("ingresoFecha").value, "ingreso");
+        });
+
+        // Formulario Egreso
+        document.getElementById("formEgreso").addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const fecha = document.getElementById("egresoFecha").value;
+          const descripcion = document.getElementById("egresoDescripcion").value.trim();
+          const categoria = document.getElementById("egresoCategoria").value;
+          const moneda = document.getElementById("egresoMoneda").value;
+          
+          const montoOriginal = safeEvalArithmetic(document.getElementById("egresoMontoOriginal").value);
+
+          if (!fecha || !descripcion || !categoria || montoOriginal === null || montoOriginal <= 0) {
+            showAlert("Indica una fecha, descripción, categoría y un monto válido (> 0).", "warning");
+            return;
+          }
+
+          const metodo = document.getElementById("egresoDistribucionSelect").value;
+          if (!metodo) {
+            showAlert("Selecciona cómo se distribuirá este gasto.", "warning");
+            return;
+          }
+
+          const activos = AppState.miembros.filter(m => m.activo !== false);
+          const distItems = [];
+
+          if (metodo === "todos") {
+            let rem = 100;
+            const pct = parseFloat((100 / activos.length).toFixed(2));
+            activos.forEach((m, idx) => {
+              const val = idx === activos.length - 1 ? parseFloat(rem.toFixed(2)) : pct;
+              rem -= val;
+              distItems.push({ miembro: m.nombre, porcentaje: val });
+            });
+          } else if (metodo.startsWith("grupo_")) {
+            const gid = metodo.replace("grupo_", "");
+            const g = AppState.grupos.find(x => x.id === gid);
+            if (!g) {
+              showAlert("El grupo seleccionado ya no existe.", "danger");
+              return;
+            }
+            const parsed = JSON.parse(g.miembrosYPorcentajes);
+            for (const m in parsed) {
+              distItems.push({ miembro: m, porcentaje: parsed[m] });
+            }
+          } else if (metodo.startsWith("miembro_")) {
+            const mname = metodo.replace("miembro_", "");
+            distItems.push({ miembro: mname, porcentaje: 100 });
+          }
+
+          let sumPct = 0;
+          distItems.forEach(d => sumPct += d.porcentaje);
+          if (Math.abs(Math.round(sumPct * 100) / 100 - 100) > 0.01) {
+            showAlert("Error interno: la suma de distribución no es 100%. Revisa el grupo creado.", "danger");
+            return;
+          }
+
+          let tasaCambio = 1.0;
+          if (moneda === "Bs") {
+            tasaCambio = safeEvalArithmetic(document.getElementById("egresoTasaManual").value) || 1.0;
+          }
+          const montoUSD = tasaCambio > 0 ? (montoOriginal / tasaCambio) : montoOriginal;
+
+          try {
+            const egresoDoc = await SecureDoc.data.add({
+              entidad: "Egreso",
+              fecha,
+              descripcion,
+              categoria,
+              moneda,
+              montoOriginal,
+              tasaCambio,
+              montoUSD,
+              metodoDistribucion: metodo
+            });
+
+            for (const item of distItems) {
+              const montoImputadoUSD = (montoUSD * item.porcentaje) / 100;
+              await SecureDoc.data.add({
+                entidad: "DistribucionEgreso",
+                egreso: egresoDoc.id,
+                miembro: item.miembro,
+                porcentaje: item.porcentaje,
+                montoImputadoUSD
+              });
+            }
+
+            showAlert("Egreso guardado exitosamente.", "success");
+            document.getElementById("formEgreso").reset();
+            document.getElementById("egresoFecha").value = fecha;
+            document.getElementById("egresoMoneda").value = moneda;
+            actualizarCalculoMonto("egreso");
+            document.getElementById("egresoDistribucionSelect").value = "";
+            document.getElementById("egresoDistribucionPreview").textContent = "";
+            poblarSelectorDistribucion();
+          } catch (err) {
+            showAlert("Error al guardar egreso: " + (err.message || err.code), "danger");
+          }
+        });
+
+        // Formulario Ingreso
+        document.getElementById("formIngreso").addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const fecha = document.getElementById("ingresoFecha").value;
+          const fuente = document.getElementById("ingresoFuente").value.trim();
+          const miembro = document.getElementById("ingresoMiembro").value;
+          const moneda = document.getElementById("ingresoMoneda").value;
+          
+          const montoOriginal = safeEvalArithmetic(document.getElementById("ingresoMontoOriginal").value);
+
+          if (!fecha || !fuente || !miembro || montoOriginal === null || montoOriginal <= 0) {
+            showAlert("Completa los datos del ingreso con un monto válido (> 0).", "warning");
+            return;
+          }
+
+          let tasaCambio = 1.0;
+          if (moneda === "Bs") {
+            tasaCambio = safeEvalArithmetic(document.getElementById("ingresoTasaManual").value) || 1.0;
+          }
+          const montoUSD = tasaCambio > 0 ? (montoOriginal / tasaCambio) : montoOriginal;
+
+          try {
+            await SecureDoc.data.add({
+              entidad: "Ingreso",
+              fecha,
+              fuente,
+              miembro,
+              moneda,
+              montoOriginal,
+              tasaCambio,
+              montoUSD
+            });
+            showAlert("Ingreso registrado correctamente.", "success");
+            document.getElementById("formIngreso").reset();
+            document.getElementById("ingresoFecha").value = fecha;
+            document.getElementById("ingresoMoneda").value = moneda;
+            actualizarCalculoMonto("ingreso");
+          } catch (err) {
+            showAlert("Error al registrar ingreso: " + (err.message || err.code), "danger");
+          }
+        });
+
+        // Formulario Categoría
+        document.getElementById("formCategoria").addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const nombre = document.getElementById("categoriaNombre").value.trim();
+          const descripcion = document.getElementById("categoriaDescripcion").value.trim();
+          if (!nombre) return;
+
+          try {
+            await SecureDoc.data.add({
+              entidad: "Categoria",
+              nombre,
+              descripcion
+            });
+            showAlert("Categoría guardada exitosamente.", "success");
+            document.getElementById("formCategoria").reset();
+          } catch (err) {
+            showAlert("Error al guardar categoría: " + (err.message || err.code), "danger");
+          }
+        });
+
+        // Formulario Presupuesto Mensual
+        document.getElementById("formPresupuesto").addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const categoria = document.getElementById("presupuestoCategoriaSelect").value;
+          const montoPresupuestadoUSD = safeEvalArithmetic(document.getElementById("presupuestoMontoUSD").value);
+          const mesAno = AppState.currentMonth;
+
+          if (!categoria || montoPresupuestadoUSD === null || montoPresupuestadoUSD < 0) {
+            showAlert("Indica una categoría y un monto válido.", "warning");
+            return;
+          }
+
+          const existing = AppState.presupuestos.find(p => p.mesAno === mesAno && p.categoria === categoria);
+
+          try {
+            if (existing) {
+              await SecureDoc.data.update(existing.id, { montoPresupuestadoUSD });
+              showAlert("Presupuesto actualizado.", "success");
+            } else {
+              await SecureDoc.data.add({
+                entidad: "PresupuestoMensual",
+                mesAno,
+                categoria,
+                montoPresupuestadoUSD
+              });
+              showAlert("Presupuesto fijado para " + mesAno, "success");
+            }
+            document.getElementById("presupuestoMontoUSD").value = "";
+          } catch (err) {
+            showAlert("Error guardando presupuesto: " + (err.message || err.code), "danger");
+          }
+        });
+
+        // Formulario Miembro
+        document.getElementById("formMiembro").addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const nombre = document.getElementById("miembroNombre").value.trim();
+          const parentesco = document.getElementById("miembroParentesco").value;
+          const activo = document.getElementById("miembroActivo").checked;
+
+          if (!nombre) return;
+
+          try {
+            await SecureDoc.data.add({
+              entidad: "Miembro",
+              nombre,
+              parentesco,
+              activo
+            });
+            showAlert("Miembro guardado con éxito.", "success");
+            document.getElementById("formMiembro").reset();
+            document.getElementById("miembroActivo").checked = true;
+          } catch (err) {
+            showAlert("Error guardando miembro: " + (err.message || err.code), "danger");
+          }
+        });
+
+        // Formulario Grupo de Imputación
+        document.getElementById("formGrupo").addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const nombreGrupo = document.getElementById("grupoNombre").value.trim();
+          if (!nombreGrupo) return;
+
+          const inputs = document.querySelectorAll(".input-grupo-pct");
+          let sum = 0;
+          const map = {};
+          inputs.forEach(i => {
+            const val = safeEvalArithmetic(i.value) || 0;
+            if (val > 0) {
+              sum += val;
+              map[i.dataset.miembro] = val;
+            }
+          });
+
+          if (Math.abs(Math.round(sum * 100) / 100 - 100) > 0.01) {
+            showAlert("Los porcentajes del grupo deben sumar exactamente 100%.", "danger");
+            return;
+          }
+
+          try {
+            await SecureDoc.data.add({
+              entidad: "GrupoImputacion",
+              nombreGrupo,
+              miembrosYPorcentajes: JSON.stringify(map)
+            });
+            showAlert("Grupo de imputación guardado.", "success");
+            document.getElementById("formGrupo").reset();
+            generarInputsGrupoMiembros();
+          } catch (err) {
+            showAlert("Error guardando grupo: " + (err.message || err.code), "danger");
+          }
+        });
+
+        document.getElementById("filtroReporteMiembro").addEventListener("change", renderReportesView);
+        document.getElementById("btnImprimirReporte").addEventListener("click", () => window.print());
+      }
+
+      function renderDashboardView() {
+        const ingresosMes = AppState.ingresos.filter(i => isInCurrentMonth(i.fecha));
+        const egresosMes = AppState.egresos.filter(e => isInCurrentMonth(e.fecha));
+
+        const totalIng = ingresosMes.reduce((acc, cur) => acc + (cur.montoUSD || 0), 0);
+        const totalEg = egresosMes.reduce((acc, cur) => acc + (cur.montoUSD || 0), 0);
+        const balance = totalIng - totalEg;
+
+        document.getElementById("dashTotalIngresos").textContent = formatUSD(totalIng);
+        document.getElementById("dashIngresosCount").textContent = `${ingresosMes.length} ingresos en ${AppState.currentMonth}`;
+
+        document.getElementById("dashTotalEgresos").textContent = formatUSD(totalEg);
+        document.getElementById("dashEgresosCount").textContent = `${egresosMes.length} egresos en ${AppState.currentMonth}`;
+
+        const balanceEl = document.getElementById("dashBalanceNeto");
+        balanceEl.textContent = formatUSD(balance);
+        balanceEl.className = balance >= 0 ? "metric-value text-primary" : "metric-value text-danger";
+        document.getElementById("dashBalanceStatus").textContent = balance >= 0 ? "Superávit disponible" : "Déficit mensual";
+
+        // Presupuesto por Categoría
+        const presupuestosMes = AppState.presupuestos.filter(p => p.mesAno === AppState.currentMonth);
+        const pListContainer = document.getElementById("dashPresupuestoList");
+        pListContainer.innerHTML = "";
+
+        if (presupuestosMes.length === 0) {
+          const empty = document.createElement("div");
+          empty.className = "text-muted small text-center py-4";
+          empty.textContent = "No hay presupuestos asignados para el mes seleccionado.";
+          pListContainer.appendChild(empty);
+        } else {
+          presupuestosMes.forEach(p => {
+            const gastadoCat = egresosMes
+              .filter(e => e.categoria === p.categoria)
+              .reduce((sum, e) => sum + (e.montoUSD || 0), 0);
+
+            const limite = p.montoPresupuestadoUSD || 1;
+            const pct = Math.min(100, Math.round((gastadoCat / limite) * 100));
+
+            const item = document.createElement("div");
+            item.className = "border-bottom pb-2";
+
+            const header = document.createElement("div");
+            header.className = "d-flex justify-content-between small mb-1";
+
+            const catSpan = document.createElement("span");
+            catSpan.className = "fw-semibold";
+            catSpan.textContent = p.categoria;
+
+            const amountsSpan = document.createElement("span");
+            amountsSpan.className = gastadoCat > limite ? "text-danger fw-bold" : "text-muted";
+            amountsSpan.textContent = `${formatUSD(gastadoCat)} / ${formatUSD(limite)} (${pct}%)`;
+
+            header.appendChild(catSpan);
+            header.appendChild(amountsSpan);
+
+            const progressWrap = document.createElement("div");
+            progressWrap.className = "progress progress-bar-custom";
+            const progressBar = document.createElement("div");
+            progressBar.className = `progress-bar ${gastadoCat > limite ? 'bg-danger' : (pct > 80 ? 'bg-warning text-dark' : 'bg-success')}`;
+            progressBar.style.width = `${pct}%`;
+            progressWrap.appendChild(progressBar);
+
+            item.appendChild(header);
+            item.appendChild(progressWrap);
+            pListContainer.appendChild(item);
+          });
+        }
+
+        // Consumo por Miembro
+        const miembrosContainer = document.getElementById("dashMiembrosList");
+        miembrosContainer.innerHTML = "";
+
+        const egresoIds = new Set(egresosMes.map(e => e.id));
+        const distsMes = AppState.distribuciones.filter(d => egresoIds.has(d.egreso));
+
+        const miembroConsumo = {};
+        distsMes.forEach(d => {
+          miembroConsumo[d.miembro] = (miembroConsumo[d.miembro] || 0) + (d.montoImputadoUSD || 0);
+        });
+
+        const sortedMiembros = Object.keys(miembroConsumo).sort((a, b) => miembroConsumo[b] - miembroConsumo[a]);
+
+        if (sortedMiembros.length === 0) {
+          const empty = document.createElement("div");
+          empty.className = "text-muted small text-center py-4";
+          empty.textContent = "No hay consumo imputado en este mes.";
+          miembrosContainer.appendChild(empty);
+        } else {
+          sortedMiembros.forEach(mName => {
+            const gastoM = miembroConsumo[mName];
+            const pctTotal = totalEg > 0 ? Math.round((gastoM / totalEg) * 100) : 0;
+
+            const item = document.createElement("div");
+            item.className = "border-bottom pb-2";
+
+            const header = document.createElement("div");
+            header.className = "d-flex justify-content-between small mb-1";
+
+            const nameSpan = document.createElement("span");
+            nameSpan.className = "fw-semibold";
+            nameSpan.textContent = mName;
+
+            const valSpan = document.createElement("span");
+            valSpan.className = "text-dark fw-bold";
+            valSpan.textContent = `${formatUSD(gastoM)} (${pctTotal}%)`;
+
+            header.appendChild(nameSpan);
+            header.appendChild(valSpan);
+
+            const progressWrap = document.createElement("div");
+            progressWrap.className = "progress progress-bar-custom";
+            const progressBar = document.createElement("div");
+            progressBar.className = "progress-bar bg-info";
+            progressBar.style.width = `${pctTotal}%`;
+            progressWrap.appendChild(progressBar);
+
+            item.appendChild(header);
+            item.appendChild(progressWrap);
+            miembrosContainer.appendChild(item);
+          });
+        }
+      }
+
+      function renderEgresosView() {
+        const tbody = document.getElementById("tablaEgresosBody");
+        tbody.innerHTML = "";
+
+        const egresosMes = AppState.egresos.filter(e => isInCurrentMonth(e.fecha));
+
+        if (egresosMes.length === 0) {
+          const tr = document.createElement("tr");
+          const td = document.createElement("td");
+          td.colSpan = 7;
+          td.className = "text-center text-muted py-4";
+          td.textContent = `No hay egresos en ${AppState.currentMonth}`;
+          tr.appendChild(td);
+          tbody.appendChild(tr);
+          return;
+        }
+
+        egresosMes.forEach(eg => {
+          const tr = document.createElement("tr");
+
+          const tdFecha = document.createElement("td");
+          tdFecha.textContent = eg.fecha || "--";
+
+          const tdDesc = document.createElement("td");
+          tdDesc.textContent = eg.descripcion || "";
+
+          const tdCat = document.createElement("td");
+          const catBadge = document.createElement("span");
+          catBadge.className = "badge bg-secondary-subtle text-secondary border";
+          catBadge.textContent = eg.categoria || "General";
+          tdCat.appendChild(catBadge);
+
+          const tdOrig = document.createElement("td");
+          tdOrig.textContent = `${(eg.montoOriginal || 0).toLocaleString()} ${eg.moneda || 'Bs'}`;
+
+          const tdUSD = document.createElement("td");
+          tdUSD.className = "fw-bold text-danger";
+          tdUSD.textContent = formatUSD(eg.montoUSD);
+
+          const tdImp = document.createElement("td");
+          const dists = AppState.distribuciones.filter(d => d.egreso === eg.id);
+          if (dists.length === 0) {
+            tdImp.textContent = "Sin desglose";
+          } else {
+            dists.forEach(d => {
+              const b = document.createElement("span");
+              b.className = "badge bg-light text-dark border me-1";
+              b.textContent = `${d.miembro} (${d.porcentaje}%)`;
+              tdImp.appendChild(b);
+            });
+          }
+
+          const tdAction = document.createElement("td");
+          tdAction.className = "text-end";
+          const btnDel = document.createElement("button");
+          btnDel.className = "btn btn-outline-danger btn-sm py-0 px-2";
+          btnDel.title = "Eliminar egreso";
+          btnDel.innerHTML = '<i class="bi bi-trash"></i>';
+          btnDel.addEventListener("click", async () => {
+            if (confirm("¿Deseas eliminar este registro de egreso?")) {
+              try {
+                dists.forEach(d => SecureDoc.data.remove(d.id).catch(() => {}));
+                await SecureDoc.data.remove(eg.id);
+                showAlert("Egreso eliminado", "info");
+              } catch (err) {
+                showAlert("Error eliminando egreso: " + (err.message || err.code), "danger");
+              }
+            }
+          });
+          tdAction.appendChild(btnDel);
+
+          tr.appendChild(tdFecha);
+          tr.appendChild(tdDesc);
+          tr.appendChild(tdCat);
+          tr.appendChild(tdOrig);
+          tr.appendChild(tdUSD);
+          tr.appendChild(tdImp);
+          tr.appendChild(tdAction);
+          tbody.appendChild(tr);
+        });
+      }
+
+      function renderIngresosView() {
+        const tbody = document.getElementById("tablaIngresosBody");
+        tbody.innerHTML = "";
+
+        const ingresosMes = AppState.ingresos.filter(i => isInCurrentMonth(i.fecha));
+
+        if (ingresosMes.length === 0) {
+          const tr = document.createElement("tr");
+          const td = document.createElement("td");
+          td.colSpan = 7;
+          td.className = "text-center text-muted py-4";
+          td.textContent = `No hay ingresos registrados en ${AppState.currentMonth}`;
+          tr.appendChild(td);
+          tbody.appendChild(tr);
+          return;
+        }
+
+        ingresosMes.forEach(ing => {
+          const tr = document.createElement("tr");
+
+          const tdFecha = document.createElement("td");
+          tdFecha.textContent = ing.fecha || "--";
+
+          const tdFuente = document.createElement("td");
+          tdFuente.textContent = ing.fuente || "";
+
+          const tdMiem = document.createElement("td");
+          tdMiem.textContent = ing.miembro || "";
+
+          const tdOrig = document.createElement("td");
+          tdOrig.textContent = `${(ing.montoOriginal || 0).toLocaleString()} ${ing.moneda || 'Bs'}`;
+
+          const tdTasa = document.createElement("td");
+          tdTasa.textContent = ing.tasaCambio ? ing.tasaCambio.toFixed(4) : "1.00";
+
+          const tdUSD = document.createElement("td");
+          tdUSD.className = "fw-bold text-success";
+          tdUSD.textContent = formatUSD(ing.montoUSD);
+
+          const tdAction = document.createElement("td");
+          tdAction.className = "text-end";
+          const btnDel = document.createElement("button");
+          btnDel.className = "btn btn-outline-danger btn-sm py-0 px-2";
+          btnDel.title = "Eliminar ingreso";
+          btnDel.innerHTML = '<i class="bi bi-trash"></i>';
+          btnDel.addEventListener("click", async () => {
+            if (confirm("¿Deseas eliminar este registro de ingreso?")) {
+              try {
+                await SecureDoc.data.remove(ing.id);
+                showAlert("Ingreso eliminado", "info");
+              } catch (err) {
+                showAlert("Error eliminando ingreso: " + (err.message || err.code), "danger");
+              }
+            }
+          });
+          tdAction.appendChild(btnDel);
+
+          tr.appendChild(tdFecha);
+          tr.appendChild(tdFuente);
+          tr.appendChild(tdMiem);
+          tr.appendChild(tdOrig);
+          tr.appendChild(tdTasa);
+          tr.appendChild(tdUSD);
+          tr.appendChild(tdAction);
+          tbody.appendChild(tr);
+        });
+      }
+
+      function renderCategoriasView() {
+        const list = document.getElementById("listaCategorias");
+        list.innerHTML = "";
+
+        if (AppState.categorias.length === 0) {
+          const emptyLi = document.createElement("li");
+          emptyLi.className = "list-group-item text-muted text-center py-3";
+          emptyLi.textContent = "No hay categorías registradas.";
+          list.appendChild(emptyLi);
+          return;
+        }
+
+        AppState.categorias.forEach(c => {
+          const li = document.createElement("li");
+          li.className = "list-group-item d-flex justify-content-between align-items-center";
+
+          const left = document.createElement("div");
+          const nameSpan = document.createElement("div");
+          nameSpan.className = "fw-semibold";
+          nameSpan.textContent = c.nombre;
+
+          const descSpan = document.createElement("div");
+          descSpan.className = "text-muted small";
+          descSpan.textContent = c.descripcion || "Sin descripción";
+
+          left.appendChild(nameSpan);
+          left.appendChild(descSpan);
+
+          const btnDel = document.createElement("button");
+          btnDel.className = "btn btn-outline-danger btn-sm py-0 px-2";
+          btnDel.innerHTML = '<i class="bi bi-x"></i>';
+          btnDel.addEventListener("click", async () => {
+            if (confirm(`¿Eliminar categoría "${c.nombre}"?`)) {
+              try {
+                await SecureDoc.data.remove(c.id);
+              } catch (err) {
+                showAlert("Error eliminando categoría: " + (err.message || err.code), "danger");
+              }
+            }
+          });
+
+          li.appendChild(left);
+          li.appendChild(btnDel);
+          list.appendChild(li);
+        });
+      }
+
+      function renderPresupuestosView() {
+        const tbody = document.getElementById("tablaPresupuestosBody");
+        tbody.innerHTML = "";
+
+        const presupuestosMes = AppState.presupuestos.filter(p => p.mesAno === AppState.currentMonth);
+
+        if (presupuestosMes.length === 0) {
+          const tr = document.createElement("tr");
+          const td = document.createElement("td");
+          td.colSpan = 3;
+          td.className = "text-center text-muted py-4";
+          td.textContent = `No hay presupuestos para ${AppState.currentMonth}. Asígnalos arriba.`;
+          tr.appendChild(td);
+          tbody.appendChild(tr);
+          return;
+        }
+
+        presupuestosMes.forEach(p => {
+          const tr = document.createElement("tr");
+
+          const tdCat = document.createElement("td");
+          tdCat.className = "fw-semibold";
+          tdCat.textContent = p.categoria;
+
+          const tdTope = document.createElement("td");
+          tdTope.className = "fw-bold text-success";
+          tdTope.textContent = formatUSD(p.montoPresupuestadoUSD);
+
+          const tdAction = document.createElement("td");
+          tdAction.className = "text-end";
+          const btnDel = document.createElement("button");
+          btnDel.className = "btn btn-outline-danger btn-sm py-0 px-2";
+          btnDel.innerHTML = '<i class="bi bi-trash"></i>';
+          btnDel.addEventListener("click", async () => {
+            if (confirm(`¿Eliminar presupuesto de ${p.categoria}?`)) {
+              try {
+                await SecureDoc.data.remove(p.id);
+              } catch (err) {
+                showAlert("Error eliminando presupuesto: " + (err.message || err.code), "danger");
+              }
+            }
+          });
+          tdAction.appendChild(btnDel);
+
+          tr.appendChild(tdCat);
+          tr.appendChild(tdTope);
+          tr.appendChild(tdAction);
+          tbody.appendChild(tr);
+        });
+      }
+
+      function renderMiembrosView() {
+        const list = document.getElementById("listaMiembros");
+        list.innerHTML = "";
+
+        if (AppState.miembros.length === 0) {
+          const emptyLi = document.createElement("li");
+          emptyLi.className = "list-group-item text-muted text-center py-3";
+          emptyLi.textContent = "No hay miembros registrados.";
+          list.appendChild(emptyLi);
+          return;
+        }
+
+        AppState.miembros.forEach(m => {
+          const li = document.createElement("li");
+          li.className = "list-group-item d-flex justify-content-between align-items-center";
+
+          const left = document.createElement("div");
+          const nameSpan = document.createElement("span");
+          nameSpan.className = "fw-semibold me-2";
+          nameSpan.textContent = m.nombre;
+
+          const badge = document.createElement("span");
+          badge.className = "badge bg-light text-dark border me-2";
+          badge.textContent = m.parentesco || "Familiar";
+
+          left.appendChild(nameSpan);
+          left.appendChild(badge);
+
+          if (!m.activo) {
+            const paused = document.createElement("span");
+            paused.className = "badge bg-secondary";
+            paused.textContent = "Inactivo";
+            left.appendChild(paused);
+          }
+
+          const right = document.createElement("div");
+          const btnToggle = document.createElement("button");
+          btnToggle.className = `btn btn-sm py-0 px-2 me-1 ${m.activo ? 'btn-outline-warning' : 'btn-outline-success'}`;
+          btnToggle.title = m.activo ? "Pausar miembro" : "Activar miembro";
+          btnToggle.innerHTML = m.activo ? '<i class="bi bi-pause"></i>' : '<i class="bi bi-play"></i>';
+          btnToggle.addEventListener("click", async () => {
+            try {
+              await SecureDoc.data.update(m.id, { activo: !m.activo });
+            } catch (err) {
+              showAlert("Error actualizando miembro: " + (err.message || err.code), "danger");
+            }
+          });
+
+          const btnDel = document.createElement("button");
+          btnDel.className = "btn btn-outline-danger btn-sm py-0 px-2";
+          btnDel.innerHTML = '<i class="bi bi-trash"></i>';
+          btnDel.addEventListener("click", async () => {
+            if (confirm(`¿Eliminar a ${m.nombre}?`)) {
+              try {
+                await SecureDoc.data.remove(m.id);
+              } catch (err) {
+                showAlert("Error eliminando miembro: " + (err.message || err.code), "danger");
+              }
+            }
+          });
+
+          right.appendChild(btnToggle);
+          right.appendChild(btnDel);
+
+          li.appendChild(left);
+          li.appendChild(right);
+          list.appendChild(li);
+        });
+      }
+
+      function renderGruposView() {
+        const list = document.getElementById("listaGrupos");
+        list.innerHTML = "";
+
+        if (AppState.grupos.length === 0) {
+          const emptyLi = document.createElement("li");
+          emptyLi.className = "list-group-item text-muted text-center py-3";
+          emptyLi.textContent = "No hay grupos creados.";
+          list.appendChild(emptyLi);
+          return;
+        }
+
+        AppState.grupos.forEach(g => {
+          const li = document.createElement("li");
+          li.className = "list-group-item d-flex justify-content-between align-items-center";
+
+          const left = document.createElement("div");
+          const name = document.createElement("div");
+          name.className = "fw-bold";
+          name.textContent = g.nombreGrupo;
+
+          const desc = document.createElement("div");
+          desc.className = "small text-muted";
+          try {
+            const parsed = JSON.parse(g.miembrosYPorcentajes);
+            desc.textContent = Object.entries(parsed).map(([m, p]) => `${m}: ${p}%`).join(" | ");
+          } catch (e) {
+            desc.textContent = "Distribución personalizada";
+          }
+
+          left.appendChild(name);
+          left.appendChild(desc);
+
+          const btnDel = document.createElement("button");
+          btnDel.className = "btn btn-outline-danger btn-sm py-0 px-2";
+          btnDel.innerHTML = '<i class="bi bi-trash"></i>';
+          btnDel.addEventListener("click", async () => {
+            if (confirm(`¿Eliminar grupo "${g.nombreGrupo}"?`)) {
+              try {
+                await SecureDoc.data.remove(g.id);
+              } catch (err) {
+                showAlert("Error eliminando grupo: " + (err.message || err.code), "danger");
+              }
+            }
+          });
+
+          li.appendChild(left);
+          li.appendChild(btnDel);
+          list.appendChild(li);
+        });
+      }
+
+      function renderReportesView() {
+        const selectedMember = document.getElementById("filtroReporteMiembro").value;
+        const tbodyMember = document.getElementById("tablaReporteMiembroBody");
+        const totalImputadoEl = document.getElementById("reporteTotalImputadoUSD");
+        const titleEl = document.getElementById("reporteMiembroTitle");
+
+        tbodyMember.innerHTML = "";
+
+        const egresosMes = AppState.egresos.filter(e => isInCurrentMonth(e.fecha));
+        const egresoMap = new Map(egresosMes.map(e => [e.id, e]));
+
+        if (!selectedMember) {
+          titleEl.textContent = "Gastos Asignados";
+          totalImputadoEl.textContent = "$0.00 USD";
+          const tr = document.createElement("tr");
+          const td = document.createElement("td");
+          td.colSpan = 5;
+          td.className = "text-center text-muted py-4";
+          td.textContent = "Selecciona un miembro en el desplegable superior.";
+          tr.appendChild(td);
+          tbodyMember.appendChild(tr);
+        } else {
+          titleEl.textContent = `Gastos Asignados a: ${selectedMember} (${AppState.currentMonth})`;
+
+          const dists = AppState.distribuciones.filter(d => d.miembro === selectedMember && egresoMap.has(d.egreso));
+          let totalMemberUSD = 0;
+
+          if (dists.length === 0) {
+            const tr = document.createElement("tr");
+            const td = document.createElement("td");
+            td.colSpan = 5;
+            td.className = "text-center text-muted py-4";
+            td.textContent = `No hay gastos imputados a ${selectedMember} en este mes.`;
+            tr.appendChild(td);
+            tbodyMember.appendChild(tr);
+          } else {
+            dists.forEach(d => {
+              const eg = egresoMap.get(d.egreso);
+              totalMemberUSD += (d.montoImputadoUSD || 0);
+
+              const tr = document.createElement("tr");
+
+              const tdFecha = document.createElement("td");
+              tdFecha.textContent = eg.fecha || "--";
+
+              const tdDesc = document.createElement("td");
+              tdDesc.textContent = eg.descripcion || "";
+
+              const tdCat = document.createElement("td");
+              tdCat.textContent = eg.categoria || "";
+
+              const tdPct = document.createElement("td");
+              tdPct.textContent = `${d.porcentaje}%`;
+
+              const tdMonto = document.createElement("td");
+              tdMonto.className = "text-end fw-bold text-danger";
+              tdMonto.textContent = formatUSD(d.montoImputadoUSD);
+
+              tr.appendChild(tdFecha);
+              tr.appendChild(tdDesc);
+              tr.appendChild(tdCat);
+              tr.appendChild(tdPct);
+              tr.appendChild(tdMonto);
+              tbodyMember.appendChild(tr);
+            });
+          }
+          totalImputadoEl.textContent = formatUSD(totalMemberUSD) + " USD";
+        }
+
+        const tbodyComp = document.getElementById("tablaComparativaPresupuestoBody");
+        tbodyComp.innerHTML = "";
+
+        const presupuestosMes = AppState.presupuestos.filter(p => p.mesAno === AppState.currentMonth);
+        if (presupuestosMes.length === 0 && egresosMes.length === 0) {
+          const tr = document.createElement("tr");
+          const td = document.createElement("td");
+          td.colSpan = 4;
+          td.className = "text-center text-muted py-4";
+          td.textContent = "Sin datos de presupuesto ni egresos en este mes.";
+          tr.appendChild(td);
+          tbodyComp.appendChild(tr);
+          return;
+        }
+
+        const allCats = new Set([
+          ...presupuestosMes.map(p => p.categoria),
+          ...egresosMes.map(e => e.categoria)
+        ]);
+
+        allCats.forEach(catName => {
+          const pObj = presupuestosMes.find(p => p.categoria === catName);
+          const pMonto = pObj ? (pObj.montoPresupuestadoUSD || 0) : 0;
+
+          const ejecutado = egresosMes
+            .filter(e => e.categoria === catName)
+            .reduce((sum, e) => sum + (e.montoUSD || 0), 0);
+
+          const diff = pMonto - ejecutado;
+
+          const tr = document.createElement("tr");
+
+          const tdCat = document.createElement("td");
+          tdCat.className = "fw-semibold";
+          tdCat.textContent = catName;
+
+          const tdPres = document.createElement("td");
+          tdPres.textContent = pMonto > 0 ? formatUSD(pMonto) : "No asignado";
+
+          const tdEjec = document.createElement("td");
+          tdEjec.className = "fw-bold";
+          tdEjec.textContent = formatUSD(ejecutado);
+
+          const tdDiff = document.createElement("td");
+          if (pMonto === 0) {
+            tdDiff.textContent = "--";
+          } else {
+            tdDiff.className = diff >= 0 ? "text-success fw-bold" : "text-danger fw-bold";
+            tdDiff.textContent = (diff >= 0 ? "+" : "") + formatUSD(diff);
+          }
+
+          tr.appendChild(tdCat);
+          tr.appendChild(tdPres);
+          tr.appendChild(tdEjec);
+          tr.appendChild(tdDiff);
+          tbodyComp.appendChild(tr);
+        });
+      }
+
+    })();
+  </script>
+</body>
+</html>
