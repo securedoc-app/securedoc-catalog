@@ -1196,19 +1196,82 @@
         cards.appendChild(metric("Gasto del mes (facturas)", money(gastoMesUSD)));
         c.appendChild(cards);
 
-        c.appendChild(el("h2",{class:"h5"},["Insumos en alerta"]));
-        if (!enAlertas.length){ c.appendChild(el("p",{class:"text-muted"},["No hay insumos en alerta. \u2714"])); }
-        else {
-          var rows = enAlertas.map(function(x){
-            var cc = calcInsumo(x);
-            return { id:x.id, Nombre:x.nombre, Existencia:num2(x.existencia), Proyectada:num2(cc.existenciaProyectada),
-              StockMín:num2(x.stockMinimoDias), Días: cc.diasProyectados==null?"—":num2(cc.diasProyectados),
-              SeAgota: cc.fechaAgote||"—" };
-          }).sort(function(a,b){ return a.Nombre.localeCompare(b.Nombre); });
-          var cols = [ {key:"Nombre",label:"Insumo"},{key:"Existencia",label:"Existencia"},{key:"Proyectada",label:"Proyectada"},
-            {key:"StockMín",label:"Stock mín (días)"},{key:"Días",label:"Días proy."},{key:"SeAgota",label:"Se agota (aprox.)"} ];
-          mountTable(c, cols, rows, function(row){ APP.detalleInsumoId=row.id; render(); });
+        if (!APP.tableroFiltro) APP.tableroFiltro = "alerta";
+        var pendientes = insumos.filter(function(x){ return calcInsumo(x).cantidadSugerida > 0; });
+
+        c.appendChild(el("h2",{class:"h5"},["Insumos"]));
+
+        var MESES = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+        function fmtCorta(iso){ if(!iso) return "—"; var dd=parseLocal(iso); if(!dd||isNaN(dd.getTime())) return iso; return (dd.getDate()<10?"0":"")+dd.getDate()+" "+MESES[dd.getMonth()]; }
+
+        var filtDef = [
+          {v:"alerta", t:"En Alerta", n:enAlertas.length},
+          {v:"pendiente", t:"Pendiente por Comprar", n:pendientes.length},
+          {v:"todos", t:"Todos", n:insumos.length}
+        ];
+        var radios = el("div",{class:"d-flex flex-wrap gap-3 mb-3"});
+        filtDef.forEach(function(f){
+          var wrap = el("div",{class:"form-check"});
+          var rb = el("input",{class:"form-check-input",type:"radio",name:"tabFiltro",id:"tabF_"+f.v,value:f.v});
+          if (APP.tableroFiltro===f.v) rb.setAttribute("checked","checked");
+          rb.addEventListener("change", function(){ if(rb.checked){ APP.tableroFiltro=f.v; render(); } });
+          wrap.appendChild(rb);
+          wrap.appendChild(el("label",{class:"form-check-label","for":"tabF_"+f.v},[f.t+" ("+f.n+")"]));
+          radios.appendChild(wrap);
+        });
+        c.appendChild(radios);
+
+        var lista = APP.tableroFiltro==="alerta" ? enAlertas : (APP.tableroFiltro==="pendiente" ? pendientes : insumos);
+        if (!lista.length){
+          c.appendChild(el("p",{class:"text-muted"},[ APP.tableroFiltro==="alerta" ? "No hay insumos en alerta. ✔" : (APP.tableroFiltro==="pendiente" ? "No hay insumos pendientes por comprar. ✔" : "Aún no hay insumos.") ]));
+          return;
         }
+
+        var datos = lista.map(function(x){
+          var cc = calcInsumo(x);
+          var cd = Number(x.consumoDiario)||0;
+          var dias = (cd>0) ? cc.diasProyectados : null;
+          return { ins:x, cc:cc, dias:dias, stockMin:Number(x.stockMinimoDias)||0, ciclo:Number(x.diasCompra)||0 };
+        }).sort(function(a,b){
+          var av=(a.dias==null)?Infinity:a.dias, bv=(b.dias==null)?Infinity:b.dias;
+          return av-bv;
+        });
+        var maxDias = 0;
+        datos.forEach(function(r){ if(r.dias!=null && r.dias>maxDias) maxDias=r.dias; });
+        if (maxDias<=0) maxDias=1;
+
+        datos.forEach(function(r){
+          var cont = el("div",{class:"mb-3"});
+          var fila = el("div",{class:"d-flex align-items-center gap-2"});
+          var nombre = el("button",{class:"btn btn-link p-0 text-start text-truncate",type:"button",style:"width:150px;flex:0 0 150px"},[r.ins.nombre||"(sin nombre)"]);
+          nombre.addEventListener("click", function(){ APP.detalleInsumoId=r.ins.id; render(); });
+          fila.appendChild(nombre);
+
+          var barWrap = el("div",{class:"flex-grow-1"});
+          var track = el("div",{style:"display:flex;width:100%;height:18px;background:#f1f3f5;border-radius:4px;overflow:hidden"});
+          var seg = function(cls, dcnt){ if(dcnt<=0) return; var w=(dcnt/maxDias*100); track.appendChild(el("div",{class:cls,style:"width:"+w+"%;height:18px"},[])); };
+          if (r.dias==null){
+            track.appendChild(el("div",{class:"bg-success",style:"width:100%;height:18px"},[]));
+          } else {
+            var redD = Math.min(r.dias, r.stockMin);
+            var yelD = Math.min(Math.max(0, r.dias - r.stockMin), r.ciclo);
+            var grnD = Math.max(0, r.dias - r.stockMin - r.ciclo);
+            seg("bg-danger", redD);
+            seg("bg-warning", yelD);
+            seg("bg-success", grnD);
+          }
+          barWrap.appendChild(track);
+
+          var partes = [];
+          partes.push((r.dias==null ? "∞" : num2(r.dias)) + " días restantes");
+          if (r.dias!=null && r.cc.fechaAgote) partes.push("se agota ~ "+fmtCorta(r.cc.fechaAgote));
+          if (r.cc.cantidadSugerida > 0) partes.push("comprar "+num2(r.cc.cantidadSugerida)+" "+(r.ins.unidad||"u"));
+          barWrap.appendChild(el("div",{class:"text-small text-muted mt-1"},[partes.join(" · ")]));
+
+          fila.appendChild(barWrap);
+          cont.appendChild(fila);
+          c.appendChild(cont);
+        });
       }
 
       // ================= LISTA DE COMPRAS =================
