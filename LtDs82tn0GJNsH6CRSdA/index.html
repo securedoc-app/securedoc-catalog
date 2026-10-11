@@ -212,7 +212,17 @@
         if (transc < 0) transc = 0;
         var proy = ex - (transc * cd);
         if (!isFinite(proy)) proy = ex;
-        var costoMes = cd * 30 * (Number(ins.ultimoCostoUSD) || 0);
+        // Costo mensual = (costo USD de la última compra × consumo diario × 30) / cantidad de la última compra.
+        var ultCompraUSD = Number(ins.ultCompraCostoUSD);
+        var ultCompraCant = Number(ins.ultCompraCantidad);
+        var costoMes;
+        if (isFinite(ultCompraUSD) && isFinite(ultCompraCant) && ultCompraCant > 0){
+          costoMes = (ultCompraUSD * cd * 30) / ultCompraCant;
+        } else {
+          // Compatibilidad con insumos previos: usa el último costo unitario.
+          costoMes = cd * 30 * (Number(ins.ultimoCostoUSD) || 0);
+        }
+        if (!isFinite(costoMes)) costoMes = 0;
         var fechaAgote = (cd > 0) ? addDaysISO(todayISO(), Math.max(0, proy / cd)) : null;
         var diasProy = cd > 0 ? proy / cd : null;
         var minDias = Number(ins.stockMinimoDias) || 0;
@@ -668,7 +678,7 @@
       }
       function lineaAUSD(montoFinalMoneda){
         var d = APP.facturaDraft;
-        if (d.moneda==="USD") return d.tasaDolar ? (montoFinalMoneda / d.tasaDolar) : montoFinalMoneda;
+        if (d.moneda==="USD") return montoFinalMoneda;
         if (d.moneda==="Bs") return d.tasaDolar ? (montoFinalMoneda / d.tasaDolar) : 0;
         if (d.moneda==="EUR") return d.tasaDolar ? (montoFinalMoneda * d.tasaEuro / d.tasaDolar) : 0;
         return montoFinalMoneda;
@@ -1089,7 +1099,7 @@
           var l = lineas[i++];
           if (l.refId!=="__nuevo__") return next();
           var base = { nombre:(l.nuevoNombre||"").trim(), categoria:"", descripcion:"", ultimoProveedor:"", ultimoCostoUSD:0 };
-          if (ent==="Insumo"){ base.unidad=l.unidad||""; base.existencia=0; base.consumoDiario=0; base.consumoMetodo="directo"; base.consumoValor=0; base.consumoDiasUnidad=0; base.stockMinimoDias=0; base.diasCompra=0; base.fechaUltimoInventario=APP.facturaDraft.fecha; }
+          if (ent==="Insumo"){ base.unidad=l.unidad||""; base.existencia=0; base.consumoDiario=0; base.consumoMetodo="directo"; base.consumoValor=0; base.consumoDiasUnidad=0; base.stockMinimoDias=0; base.diasCompra=0; base.ultCompraCostoUSD=0; base.ultCompraCantidad=0; base.fechaUltimoInventario=APP.facturaDraft.fecha; }
           return sdAdd(ent, base).then(function(res){ l.refId = idOf(res); return next(); });
         }
         return next();
@@ -1112,7 +1122,9 @@
                 return sdUpdate(ins.id, {
                   existencia: (Number(ins.existencia)||0) + cant,
                   ultimoProveedor: APP.facturaDraft.proveedor,
-                  ultimoCostoUSD: costoUnitUSD
+                  ultimoCostoUSD: costoUnitUSD,
+                  ultCompraCostoUSD: finalUSD,
+                  ultCompraCantidad: cant
                 }).then(next);
               }
             } else {
