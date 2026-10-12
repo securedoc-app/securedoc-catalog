@@ -19,6 +19,10 @@
     .text-small { font-size:.85rem; }
     main { min-height:70vh; }
     .line-grid { font-size:.9rem; }
+    .plan-aviso { list-style:none; margin:0; padding:0; }
+    .plan-aviso li { padding:.3rem .5rem; border-radius:.25rem; }
+    .plan-aviso li.stripe-a { background:#f1f3f5; }
+    .plan-aviso li.stripe-b { background:#e2e8f0; }
     @media print {
       .navbar, .sidebar, .no-print { display:none !important; }
       .col-md-9, .col-lg-10 { width:100% !important; max-width:100% !important; flex:0 0 100% !important; }
@@ -1653,20 +1657,29 @@
           tomasHoy.sort(function(a,b){ return a.min - b.min; });
           var vencidas = tomasHoy.filter(function(x){ return x.min <= ahoraMin; });
           var proximas = tomasHoy.filter(function(x){ return x.min > ahoraMin; });
-          function filaToma(x){
-            return el("li",{class:"text-small"},[num2(Number(x.toma.cantidad)||0)+" "+(x.ins.unidad||"u")+" · "+x.ins.nombre+" · "+momentoLabel(x.toma.momento)+" ("+x.hora+")"+(x.toma.nota?(" – "+x.toma.nota):"")]);
+          function filaToma(x, stripe){
+            return el("li",{class:"text-small "+stripe},[num2(Number(x.toma.cantidad)||0)+" "+(x.ins.unidad||"u")+" · "+x.ins.nombre+" · "+momentoLabel(x.toma.momento)+" ("+x.hora+")"+(x.toma.nota?(" – "+x.toma.nota):"")]);
+          }
+          function listaTomas(arr){
+            var ul = el("ul",{class:"plan-aviso mb-0"});
+            var prevMom = null, stripeIdx = -1;
+            arr.forEach(function(x){
+              if(x.toma.momento !== prevMom){ stripeIdx++; prevMom = x.toma.momento; }
+              ul.appendChild(filaToma(x, (stripeIdx % 2 === 0) ? "stripe-a" : "stripe-b"));
+            });
+            return ul;
           }
           var panel = el("div",{class:"row g-3 mb-3"});
           var colV = el("div",{class:"col-12 col-md-6"});
           var boxV = el("div",{class:"border rounded p-3 h-100 "+(vencidas.length?"border-warning":"")});
           boxV.appendChild(el("div",{class:"fw-semibold mb-2"},["⏰ Ya debías consumir hoy"]));
-          if(vencidas.length){ var ulV=el("ul",{class:"mb-0"}); vencidas.forEach(function(x){ ulV.appendChild(filaToma(x)); }); boxV.appendChild(ulV); }
+          if(vencidas.length){ boxV.appendChild(listaTomas(vencidas)); }
           else boxV.appendChild(el("div",{class:"text-small text-muted"},["Nada pendiente por ahora."]));
           colV.appendChild(boxV); panel.appendChild(colV);
           var colP = el("div",{class:"col-12 col-md-6"});
           var boxP = el("div",{class:"border rounded p-3 h-100"});
           boxP.appendChild(el("div",{class:"fw-semibold mb-2"},["🔜 Próximas de hoy"]));
-          if(proximas.length){ var ulP=el("ul",{class:"mb-0"}); proximas.forEach(function(x){ ulP.appendChild(filaToma(x)); }); boxP.appendChild(ulP); }
+          if(proximas.length){ boxP.appendChild(listaTomas(proximas)); }
           else boxP.appendChild(el("div",{class:"text-small text-muted"},["No quedan tomas más tarde hoy."]));
           colP.appendChild(boxP); panel.appendChild(colP);
           c.appendChild(el("div",{class:"text-small text-muted mb-1"},["Recordatorio informativo (no marca ni descuenta existencias)."]));
