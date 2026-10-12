@@ -50,7 +50,7 @@
   <script>
   var APP = { ctx:null, view:"Tablero", cache:{}, detalleInsumoId:null, invInsumoId:null, facturaDraft:null, repMes:"ALL", listaCompras:null };
   var ENTIDADES = ["Categoria","Insumo","Servicio","Proveedor","Factura","LineaFactura","InventarioFisico"];
-  var MENU = ["Tablero","Categorías","Insumos","Servicios","Proveedores","Registrar Factura","Inventario Físico","Lista de Compras","Reportes"];
+  var MENU = ["Tablero","Categorías","Insumos","Plan de Consumo","Servicios","Proveedores","Registrar Factura","Inventario Físico","Lista de Compras","Reportes"];
 
   if (typeof SecureDoc === "undefined") {
     document.getElementById("content").textContent = "No se detectó el entorno SecureDoc. Abra esta aplicación dentro de SecureDoc.";
@@ -181,6 +181,7 @@
             case "Tablero": viewTablero(c); break;
             case "Categorías": viewCategorias(c); break;
             case "Insumos": viewInsumos(c); break;
+            case "Plan de Consumo": viewPlanSemanal(c); break;
             case "Servicios": viewServicios(c); break;
             case "Proveedores": viewProveedores(c); break;
             case "Registrar Factura": viewFactura(c); break;
@@ -237,6 +238,78 @@
         var minDias = Number(ins.stockMinimoDias) || 0;
         if (cc.diasProyectados != null && cc.diasProyectados <= minDias) return true;
         return false;
+      }
+
+      // ---------- Plan de consumo (tomas) ----------
+      // Momentos del día, en orden, con una hora de referencia para ordenar/comparar.
+      var MOMENTOS = [
+        { k:"ayunas",         t:"En ayunas / al despertar",   h:"06:30" },
+        { k:"antes_desayuno", t:"Antes del desayuno",          h:"07:00" },
+        { k:"desayuno",       t:"Con / después del desayuno",   h:"08:00" },
+        { k:"media_manana",   t:"Media mañana",                h:"10:30" },
+        { k:"antes_almuerzo", t:"Antes del almuerzo",          h:"12:00" },
+        { k:"almuerzo",       t:"Con / después del almuerzo",   h:"13:00" },
+        { k:"merienda",       t:"Media tarde / merienda",       h:"16:00" },
+        { k:"antes_cena",     t:"Antes de la cena",             h:"19:00" },
+        { k:"cena",           t:"Con / después de la cena",      h:"20:00" },
+        { k:"dormir",         t:"Antes de dormir",              h:"22:00" }
+      ];
+      // Días de la semana (getDay: 0=domingo..6=sábado), mostrados de lunes a domingo.
+      var DIAS_SEMANA = [ {k:1,t:"Lun"},{k:2,t:"Mar"},{k:3,t:"Mié"},{k:4,t:"Jue"},{k:5,t:"Vie"},{k:6,t:"Sáb"},{k:0,t:"Dom"} ];
+      function momentoDef(k){ for(var i=0;i<MOMENTOS.length;i++){ if(MOMENTOS[i].k===k) return MOMENTOS[i]; } return null; }
+      function momentoOrden(k){ for(var i=0;i<MOMENTOS.length;i++){ if(MOMENTOS[i].k===k) return i; } return 99; }
+      function momentoLabel(k){ var d=momentoDef(k); return d?d.t:(k||""); }
+      function horaValida(h){ return /^\d{2}:\d{2}$/.test(String(h||"")); }
+      function minutosDe(hhmm){ var p=String(hhmm||"").split(":"); return (Number(p[0])||0)*60+(Number(p[1])||0); }
+      // Hora de referencia de una toma: su hora exacta si la tiene, si no la del momento.
+      function tomaHoraRef(toma){ if(horaValida(toma&&toma.hora)) return toma.hora; var d=momentoDef(toma&&toma.momento); return d?d.h:"12:00"; }
+      function nuevaToma(){ return { momento:"desayuno", hora:"", cantidad:1, diasTipo:"todos", diasSemana:[1,2,3,4,5,6,0], cadaN:1, inicio:todayISO(), finTipo:"indefinido", finFecha:"", finDias:0, nota:"" }; }
+      function planDe(ins){ return (ins && Array.isArray(ins.plan)) ? ins.plan : []; }
+      function clonarPlan(plan){ try { return JSON.parse(JSON.stringify(plan||[])); } catch(e){ return []; } }
+      // Fecha de fin efectiva de una toma (ISO) o null si es indefinida.
+      function tomaFinISO(toma){
+        if(toma.finTipo==="hasta") return toma.finFecha||null;
+        if(toma.finTipo==="porN"){ var n=Number(toma.finDias)||0; if(n<=0) return null; return addDaysISO(toma.inicio||todayISO(), n-1); }
+        return null;
+      }
+      // ¿La toma está vigente en la fecha dada? (dentro de su ventana inicio..fin)
+      function tomaVigente(toma, iso){
+        var ini = toma.inicio||todayISO();
+        if (daysBetween(ini, iso) < 0) return false;
+        var fin = tomaFinISO(toma);
+        if (fin && daysBetween(iso, fin) < 0) return false;
+        return true;
+      }
+      // ¿La toma aplica (toca) en la fecha dada según su pauta de días?
+      function tomaAplicaDia(toma, iso){
+        if(!tomaVigente(toma,iso)) return false;
+        if(toma.diasTipo==="todos") return true;
+        if(toma.diasTipo==="semana"){ var dd=parseLocal(iso); if(!dd) return false; return (toma.diasSemana||[]).indexOf(dd.getDay())>=0; }
+        if(toma.diasTipo==="cadaN"){ var n=Number(toma.cadaN)||1; if(n<1) n=1; var diff=daysBetween(toma.inicio||iso, iso); return diff>=0 && (diff % n)===0; }
+        return false;
+      }
+      // Fracción de días en que la toma aplica (para promediar el consumo diario).
+      function tomaFactorDiario(toma){
+        if(toma.diasTipo==="todos") return 1;
+        if(toma.diasTipo==="semana") return (toma.diasSemana||[]).length/7;
+        if(toma.diasTipo==="cadaN"){ var n=Number(toma.cadaN)||1; if(n<1) n=1; return 1/n; }
+        return 0;
+      }
+      // Consumo diario promedio derivado del plan (solo tomas vigentes hoy).
+      function consumoDiarioDesdePlan(plan, iso){
+        iso = iso||todayISO();
+        var tot=0;
+        (plan||[]).forEach(function(t){ if(tomaVigente(t,iso)) tot += (Number(t.cantidad)||0)*tomaFactorDiario(t); });
+        if(!isFinite(tot)||tot<0) tot=0;
+        return tot;
+      }
+      // Resumen corto de una toma para listados.
+      function resumenToma(toma, unidad){
+        var dias = toma.diasTipo==="todos" ? "todos los días"
+          : (toma.diasTipo==="semana" ? DIAS_SEMANA.filter(function(d){ return (toma.diasSemana||[]).indexOf(d.k)>=0; }).map(function(d){ return d.t; }).join(" ")
+          : ("cada "+(Number(toma.cadaN)||1)+" d\u00edas"));
+        var hr = horaValida(toma.hora) ? (" ("+toma.hora+")") : "";
+        return num2(Number(toma.cantidad)||0)+" "+(unidad||"u")+" · "+momentoLabel(toma.momento)+hr+" · "+dias;
       }
 
       // ---------- Form helpers ----------
@@ -398,7 +471,18 @@
         var cicloIni = (ins && ins.consumoMetodo==="ciclo") ? ins.consumoValor : 0;
         var durUnidIni = (ins && ins.consumoMetodo==="duracion" && ins.consumoValor!=null) ? ins.consumoValor : 1;
         var durDiasIni = (ins && ins.consumoMetodo==="duracion") ? ins.consumoDiasUnidad : 0;
-        var consCol = el("div",{class:"col-12"});
+        var planIni = ins ? clonarPlan(ins.plan) : [];
+        var llevaPlanIni = !!(ins && ins.llevaPlan);
+        var togCol = el("div",{class:"col-12"});
+        var togCard = el("div",{class:"form-check"});
+        var togChk = el("input",{type:"checkbox",class:"form-check-input",id:"insLlevaPlan"});
+        if (llevaPlanIni) togChk.checked = true;
+        togCard.appendChild(togChk);
+        togCard.appendChild(el("label",{class:"form-check-label fw-semibold","for":"insLlevaPlan"},["Lleva plan de consumo (horarios o referencias como “antes del desayuno”)"]));
+        togCard.appendChild(el("div",{class:"text-small text-muted"},["Si lo activas, el consumo diario se calcula autom\u00e1ticamente a partir de las tomas del plan."]));
+        togCol.appendChild(togCard);
+        frm.appendChild(togCol);
+        var consCol = el("div",{class:"col-12",id:"grpConsCard"});
         var consCard = el("div",{class:"border rounded p-3"});
         consCard.appendChild(el("label",{class:"form-label fw-semibold mb-2","for":"insConsMetodo"},["Consumo — ¿cómo quieres indicarlo?"]));
         consCard.appendChild(selectField("insConsMetodo", [
@@ -422,9 +506,29 @@
         consCard.appendChild(el("div",{class:"text-small text-muted mt-2",id:"insConsReadout"},[""]));
         consCol.appendChild(consCard);
         frm.appendChild(consCol);
+        var planCol = el("div",{class:"col-12",id:"grpPlanCard"});
+        var planCard = el("div",{class:"border rounded p-3"});
+        planCard.appendChild(el("label",{class:"form-label fw-semibold mb-2"},["Plan de consumo — tomas"]));
+        planCard.appendChild(el("div",{id:"planLista"}));
+        var addToma = el("button",{class:"btn btn-outline-primary btn-sm",type:"button",id:"planAdd"},["+ Agregar toma"]);
+        planCard.appendChild(addToma);
+        planCard.appendChild(el("div",{class:"text-small text-muted mt-2",id:"planReadout"},[""]));
+        planCol.appendChild(planCard);
+        frm.appendChild(planCol);
         frm.appendChild(colf(campo("Stock mínimo (días)", inputNumero("insMinDias", ins?ins.stockMinimoDias:0, {min:0, allowNegatives:false, decimals:0}))));
         frm.appendChild(colf(campo("Compro cada (días)", inputNumero("insDiasCompra", ins?ins.diasCompra:0, {min:0, allowNegatives:false, decimals:0}))));
         frm.appendChild(colf(campo("Fecha último inventario", inputFecha("insFecha", ins?ins.fechaUltimoInventario:todayISO()))));
+        var aliasCol = el("div",{class:"col-12 col-md-8"});
+        aliasCol.appendChild(campo("Otros nombres / marcas (separados por coma)", inputText("insAlias", (ins?aliasList(ins).join(", "):""), {placeholder:"Ej.: Aceite Marca X, Aceite 1L"})));
+        frm.appendChild(aliasCol);
+        var genCol = el("div",{class:"col-12 col-md-4"});
+        var genCard = el("div",{class:"form-check mt-md-4 pt-md-2"});
+        var genChk = el("input",{type:"checkbox",class:"form-check-input",id:"insGeneral"});
+        if (ins && ins.esGeneral) genChk.checked = true;
+        var genLbl = el("label",{class:"form-check-label","for":"insGeneral"},["Insumo general de la categoría (comodín para compras puntuales)"]);
+        genCard.appendChild(genChk); genCard.appendChild(genLbl);
+        genCol.appendChild(genCard);
+        frm.appendChild(genCol);
         c.appendChild(frm);
         function computeConsumoInsumo(){
           var m = readVal("insConsMetodo");
@@ -457,6 +561,131 @@
         });
         setMetodoVis();
         updateConsumoReadout();
+        // ----- Editor del plan de consumo -----
+        var planTomas = planIni;
+        function updatePlanReadout(){
+          var ro = byId("planReadout"); if(!ro) return;
+          if(!planTomas.length){ ro.textContent = "Agrega al menos una toma para calcular el consumo."; return; }
+          var cd = consumoDiarioDesdePlan(planTomas);
+          var ex = readNumero("insExist");
+          var txt = "Consumo diario calculado \u2248 " + num2(cd) + " " + (readVal("insUnidad").trim()||"u") + "/d\u00eda";
+          if(cd>0) txt += " \u00b7 tu existencia actual durar\u00eda \u2248 " + num2(ex/cd) + " d\u00edas";
+          ro.textContent = txt;
+        }
+        function renderPlanLista(){
+          var cont = byId("planLista"); if(!cont) return;
+          clear(cont);
+          if(!planTomas.length){ cont.appendChild(el("p",{class:"text-small text-muted"},["Sin tomas todav\u00eda."])); }
+          planTomas.forEach(function(t, idx){
+            var row = el("div",{class:"border rounded p-2 mb-2"});
+            var f1 = el("div",{class:"row g-2 align-items-end"});
+            var cMom = el("div",{class:"col-12 col-md-5"});
+            cMom.appendChild(el("label",{class:"form-label text-small mb-0"},["Momento"]));
+            var selMom = selectField("tomaMom"+idx, MOMENTOS.map(function(m){ return {value:m.k,label:m.t}; }), t.momento);
+            selMom.addEventListener("change", function(){ t.momento = readVal("tomaMom"+idx); updatePlanReadout(); });
+            cMom.appendChild(selMom); f1.appendChild(cMom);
+            var cHora = el("div",{class:"col-6 col-md-3"});
+            cHora.appendChild(el("label",{class:"form-label text-small mb-0"},["Hora (opcional)"]));
+            var inHora = el("input",{type:"time",class:"form-control",id:"tomaHora"+idx,value:(horaValida(t.hora)?t.hora:"")});
+            inHora.addEventListener("change", function(){ t.hora = inHora.value||""; });
+            cHora.appendChild(inHora); f1.appendChild(cHora);
+            var cCant = el("div",{class:"col-6 col-md-4"});
+            cCant.appendChild(el("label",{class:"form-label text-small mb-0"},["Cantidad por toma"]));
+            var inCant = inputNumero("tomaCant"+idx, t.cantidad, {min:0, allowNegatives:false, decimals:3});
+            inCant.addEventListener("change", function(){ t.cantidad = readNumero("tomaCant"+idx); updatePlanReadout(); });
+            cCant.appendChild(inCant); f1.appendChild(cCant);
+            row.appendChild(f1);
+            var f2 = el("div",{class:"row g-2 align-items-end mt-1"});
+            var cDias = el("div",{class:"col-12 col-md-5"});
+            cDias.appendChild(el("label",{class:"form-label text-small mb-0"},["D\u00edas"]));
+            var selDias = selectField("tomaDias"+idx, [
+              {value:"todos",label:"Todos los d\u00edas"},
+              {value:"semana",label:"D\u00edas de la semana"},
+              {value:"cadaN",label:"Cada N d\u00edas"}
+            ], t.diasTipo);
+            selDias.addEventListener("change", function(){ t.diasTipo = readVal("tomaDias"+idx); renderPlanLista(); updatePlanReadout(); });
+            cDias.appendChild(selDias); f2.appendChild(cDias);
+            if(t.diasTipo==="semana"){
+              var cWd = el("div",{class:"col-12 col-md-7"});
+              cWd.appendChild(el("label",{class:"form-label text-small mb-0 d-block"},["Elige los d\u00edas"]));
+              var wdWrap = el("div",{class:"d-flex flex-wrap gap-2"});
+              DIAS_SEMANA.forEach(function(dw){
+                var w = el("div",{class:"form-check form-check-inline"});
+                var cb = el("input",{type:"checkbox",class:"form-check-input",id:"tomaWd"+idx+"_"+dw.k});
+                if((t.diasSemana||[]).indexOf(dw.k)>=0) cb.checked = true;
+                cb.addEventListener("change", function(){
+                  var arr = t.diasSemana||[]; var pos = arr.indexOf(dw.k);
+                  if(cb.checked){ if(pos<0) arr.push(dw.k); } else { if(pos>=0) arr.splice(pos,1); }
+                  t.diasSemana = arr; updatePlanReadout();
+                });
+                w.appendChild(cb); w.appendChild(el("label",{class:"form-check-label text-small","for":"tomaWd"+idx+"_"+dw.k},[dw.t]));
+                wdWrap.appendChild(w);
+              });
+              cWd.appendChild(wdWrap); f2.appendChild(cWd);
+            } else if(t.diasTipo==="cadaN"){
+              var cN = el("div",{class:"col-6 col-md-3"});
+              cN.appendChild(el("label",{class:"form-label text-small mb-0"},["Cada (d\u00edas)"]));
+              var inN = inputNumero("tomaCadaN"+idx, t.cadaN, {min:1, allowNegatives:false, decimals:0});
+              inN.addEventListener("change", function(){ t.cadaN = Math.max(1, readNumero("tomaCadaN"+idx)); updatePlanReadout(); });
+              cN.appendChild(inN); f2.appendChild(cN);
+            }
+            row.appendChild(f2);
+            var f3 = el("div",{class:"row g-2 align-items-end mt-1"});
+            var cIni = el("div",{class:"col-6 col-md-4"});
+            cIni.appendChild(el("label",{class:"form-label text-small mb-0"},["Desde"]));
+            var inIni = inputFecha("tomaIni"+idx, t.inicio||todayISO());
+            inIni.addEventListener("change", function(){ t.inicio = readVal("tomaIni"+idx); updatePlanReadout(); });
+            cIni.appendChild(inIni); f3.appendChild(cIni);
+            var cFin = el("div",{class:"col-6 col-md-4"});
+            cFin.appendChild(el("label",{class:"form-label text-small mb-0"},["Hasta"]));
+            var selFin = selectField("tomaFin"+idx, [
+              {value:"indefinido",label:"Indefinido"},
+              {value:"hasta",label:"Hasta fecha"},
+              {value:"porN",label:"Por N d\u00edas"}
+            ], t.finTipo);
+            selFin.addEventListener("change", function(){ t.finTipo = readVal("tomaFin"+idx); renderPlanLista(); updatePlanReadout(); });
+            cFin.appendChild(selFin); f3.appendChild(cFin);
+            if(t.finTipo==="hasta"){
+              var cFF = el("div",{class:"col-6 col-md-4"});
+              cFF.appendChild(el("label",{class:"form-label text-small mb-0"},["Fecha fin"]));
+              var inFF = inputFecha("tomaFinF"+idx, t.finFecha||todayISO());
+              inFF.addEventListener("change", function(){ t.finFecha = readVal("tomaFinF"+idx); updatePlanReadout(); });
+              cFF.appendChild(inFF); f3.appendChild(cFF);
+            } else if(t.finTipo==="porN"){
+              var cFN = el("div",{class:"col-6 col-md-4"});
+              cFN.appendChild(el("label",{class:"form-label text-small mb-0"},["Durante (d\u00edas)"]));
+              var inFN = inputNumero("tomaFinN"+idx, t.finDias, {min:1, allowNegatives:false, decimals:0});
+              inFN.addEventListener("change", function(){ t.finDias = readNumero("tomaFinN"+idx); updatePlanReadout(); });
+              cFN.appendChild(inFN); f3.appendChild(cFN);
+            }
+            row.appendChild(f3);
+            var f4 = el("div",{class:"row g-2 align-items-end mt-1"});
+            var cNota = el("div",{class:"col-9"});
+            cNota.appendChild(el("label",{class:"form-label text-small mb-0"},["Nota (opcional)"]));
+            var inNota = inputText("tomaNota"+idx, t.nota, {placeholder:"ej. con comida"});
+            inNota.addEventListener("change", function(){ t.nota = readVal("tomaNota"+idx); });
+            cNota.appendChild(inNota); f4.appendChild(cNota);
+            var cDel = el("div",{class:"col-3 text-end"});
+            var bDel = el("button",{class:"btn btn-outline-danger btn-sm",type:"button"},["Quitar"]);
+            bDel.addEventListener("click", function(){ planTomas.splice(idx,1); renderPlanLista(); updatePlanReadout(); });
+            cDel.appendChild(bDel); f4.appendChild(cDel);
+            row.appendChild(f4);
+            cont.appendChild(row);
+          });
+        }
+        byId("planAdd").addEventListener("click", function(){ planTomas.push(nuevaToma()); renderPlanLista(); updatePlanReadout(); });
+        function setPlanVis(){
+          var on = !!(byId("insLlevaPlan") && byId("insLlevaPlan").checked);
+          var man = byId("grpConsCard"), pl = byId("grpPlanCard");
+          if(man) man.classList.toggle("d-none", on);
+          if(pl) pl.classList.toggle("d-none", !on);
+        }
+        byId("insLlevaPlan").addEventListener("change", setPlanVis);
+        var insUnidadEl2 = byId("insUnidad"); if(insUnidadEl2) insUnidadEl2.addEventListener("change", updatePlanReadout);
+        var insExistEl2 = byId("insExist"); if(insExistEl2) insExistEl2.addEventListener("change", updatePlanReadout);
+        renderPlanLista();
+        updatePlanReadout();
+        setPlanVis();
         c.appendChild(el("p",{class:"text-small text-muted"},["Último proveedor y último costo se actualizan automáticamente al registrar compras."]));
         var acciones = el("div",{class:"d-flex gap-2 mt-2"});
         var save = el("button",{class:"btn btn-success",type:"button"},["Guardar"]);
@@ -464,11 +693,23 @@
         save.addEventListener("click", function(){
           var nombre = readVal("insNombre").trim();
           if(!nombre){ flash("El nombre es obligatorio.","warning"); return; }
-          var cons = computeConsumoInsumo();
+          var llevaPlan = !!(byId("insLlevaPlan") && byId("insLlevaPlan").checked);
+          var consDiario, consMetodo, consValor, consDiasU, planGuardar;
+          if (llevaPlan){
+            if (!planTomas.length){ flash("Agrega al menos una toma al plan de consumo o desactiva el plan.","warning"); return; }
+            consDiario = consumoDiarioDesdePlan(planTomas);
+            consMetodo = "plan"; consValor = 0; consDiasU = 0; planGuardar = clonarPlan(planTomas);
+          } else {
+            var cons = computeConsumoInsumo();
+            consDiario = cons.diario; consMetodo = cons.metodo; consValor = cons.valor; consDiasU = cons.diasUnidad; planGuardar = [];
+          }
           var patch = { nombre:nombre, unidad:readVal("insUnidad").trim(), categoria:readVal("insCat"),
-            existencia:readNumero("insExist"), consumoDiario:cons.diario, consumoMetodo:cons.metodo, consumoValor:cons.valor, consumoDiasUnidad:cons.diasUnidad,
+            existencia:readNumero("insExist"), consumoDiario:consDiario, consumoMetodo:consMetodo, consumoValor:consValor, consumoDiasUnidad:consDiasU,
+            llevaPlan:llevaPlan, plan:planGuardar,
             stockMinimoDias:readNumero("insMinDias"), diasCompra:readNumero("insDiasCompra"),
-            fechaUltimoInventario:readVal("insFecha") };
+            fechaUltimoInventario:readVal("insFecha"),
+            alias: readVal("insAlias").split(",").map(function(s){ return s.trim(); }).filter(Boolean),
+            esGeneral: !!(byId("insGeneral") && byId("insGeneral").checked) };
           if(!editando){ patch.ultimoProveedor = ins?ins.ultimoProveedor:""; patch.ultimoCostoUSD = 0; }
           var p = editando ? sdUpdate(ins.id, patch) : sdAdd("Insumo", patch);
           save.disabled = true;
@@ -526,7 +767,15 @@
         c.appendChild(cards);
         if (enAlerta(ins)) c.appendChild(el("div",{class:"alert alert-warning"},["⚠ Los días de existencia proyectada están por debajo del stock mínimo en días."]));
 
-        // Historial de compras
+        // Plan de consumo
+        if (ins.llevaPlan && (ins.plan||[]).length){
+          c.appendChild(el("h2",{class:"h5 mt-3"},["Plan de consumo"]));
+          c.appendChild(el("p",{class:"text-small text-muted"},["El consumo diario de este insumo se calcula autom\u00e1ticamente a partir de las tomas programadas."]));
+          var ul = el("ul",{class:"mb-2"});
+          (ins.plan||[]).forEach(function(t){ ul.appendChild(el("li",{class:"text-small"},[resumenToma(t, ins.unidad)])); });
+          c.appendChild(ul);
+        }
+
         c.appendChild(el("h2",{class:"h5 mt-3"},["Historial de compras"]));
         var lineas = get("LineaFactura").filter(function(l){ return l.tipo==="Insumo" && l.refId===ins.id; });
         var facturasById = {}; get("Factura").forEach(function(f){ facturasById[f.id]=f; });
@@ -538,6 +787,90 @@
         if(!rows.length){ c.appendChild(el("p",{class:"text-muted"},["Sin compras registradas."])); return; }
         var cols = [ {key:"Fecha",label:"Fecha"},{key:"Proveedor",label:"Proveedor"},{key:"Cantidad",label:"Cantidad"},{key:"CostoUnitUSD",label:"Costo unit. USD"},{key:"TotalUSD",label:"Total USD"} ];
         mountTable(c, cols, rows, null);
+      }
+
+      // ================= PLAN DE CONSUMO (SEMANAL) =================
+      function lunesDeSemana(iso){
+        var d = parseLocal(iso) || new Date();
+        var dow = d.getDay(); // 0=dom..6=sab
+        var diff = (dow===0) ? -6 : (1 - dow); // retroceder al lunes
+        return addDaysISO(iso, diff);
+      }
+      function viewPlanSemanal(c){
+        if (typeof APP.planWeekOffset !== "number") APP.planWeekOffset = 0;
+        var hoy = todayISO();
+        var lunesBase = lunesDeSemana(hoy);
+        var lunes = addDaysISO(lunesBase, APP.planWeekOffset*7);
+        var domingo = addDaysISO(lunes, 6);
+        // Insumos con plan
+        var insumos = get("Insumo").filter(function(x){ return x.llevaPlan && planDe(x).length; });
+        // Controles de navegación
+        var nav = el("div",{class:"btn-group"});
+        var bPrev = el("button",{class:"btn btn-outline-secondary btn-sm",type:"button"},["← Semana anterior"]);
+        bPrev.addEventListener("click", function(){ APP.planWeekOffset -= 1; render(); });
+        var bHoy = el("button",{class:"btn btn-outline-secondary btn-sm",type:"button"},["Hoy"]);
+        bHoy.addEventListener("click", function(){ APP.planWeekOffset = 0; render(); });
+        var bNext = el("button",{class:"btn btn-outline-secondary btn-sm",type:"button"},["Semana siguiente →"]);
+        bNext.addEventListener("click", function(){ APP.planWeekOffset += 1; render(); });
+        nav.appendChild(bPrev); nav.appendChild(bHoy); nav.appendChild(bNext);
+        h(c, "Plan de Consumo", nav);
+        c.appendChild(el("p",{class:"text-small text-muted"},["Semana del "+lunes+" al "+domingo+". Vista informativa de las tomas programadas de tus insumos con plan."]));
+        if(!insumos.length){ c.appendChild(el("div",{class:"alert alert-info"},["A\u00fan no hay insumos con un plan de consumo. Activa un plan al editar un insumo (p. ej. medicinas)."])); return; }
+        // Determinar los momentos que aparecen en la semana
+        var usados = {};
+        var dias = [];
+        for(var i=0;i<7;i++){ dias.push(addDaysISO(lunes, i)); }
+        insumos.forEach(function(ins){
+          planDe(ins).forEach(function(t){
+            dias.forEach(function(diso){ if(tomaAplicaDia(t, diso)) usados[t.momento]=true; });
+          });
+        });
+        var momentosLista = MOMENTOS.filter(function(m){ return usados[m.k]; });
+        if(!momentosLista.length){ c.appendChild(el("div",{class:"alert alert-info"},["No hay tomas programadas en esta semana."])); return; }
+        // Tabla rejilla momentos x días
+        var wrap = el("div",{class:"table-responsive"});
+        var tbl = el("table",{class:"table table-bordered align-middle text-small"});
+        var thead = el("thead");
+        var trh = el("tr");
+        trh.appendChild(el("th",{class:"bg-light"},["Momento"]));
+        DIAS_SEMANA.forEach(function(dw, i){
+          var diso = dias[i];
+          var esHoy = (diso===hoy);
+          var th = el("th",{class:(esHoy?"bg-primary text-white":"bg-light")+" text-center"});
+          th.appendChild(el("div",{},[dw.t]));
+          th.appendChild(el("div",{class:"text-small fw-normal"},[diso.slice(5)]));
+          trh.appendChild(th);
+        });
+        thead.appendChild(trh); tbl.appendChild(thead);
+        var tbody = el("tbody");
+        momentosLista.forEach(function(m){
+          var tr = el("tr");
+          var tdM = el("th",{class:"bg-light"});
+          tdM.appendChild(el("div",{},[m.t]));
+          tdM.appendChild(el("div",{class:"text-small fw-normal text-muted"},[m.h]));
+          tr.appendChild(tdM);
+          DIAS_SEMANA.forEach(function(dw, i){
+            var diso = dias[i];
+            var td = el("td",{class:(diso===hoy?"table-primary":"")});
+            var items = [];
+            insumos.forEach(function(ins){
+              planDe(ins).forEach(function(t){
+                if(t.momento===m.k && tomaAplicaDia(t, diso)){
+                  var hr = horaValida(t.hora) ? (" "+t.hora) : "";
+                  items.push(num2(Number(t.cantidad)||0)+" "+(ins.unidad||"u")+" · "+ins.nombre+hr+(t.nota?(" ("+t.nota+")"):""));
+                }
+              });
+            });
+            if(items.length){
+              items.forEach(function(txt){ td.appendChild(el("div",{class:"mb-1"},[txt])); });
+            } else {
+              td.appendChild(el("span",{class:"text-muted"},["–"]));
+            }
+            tr.appendChild(td);
+          });
+          tbody.appendChild(tr);
+        });
+        tbl.appendChild(tbody); wrap.appendChild(tbl); c.appendChild(wrap);
       }
 
       // ================= SERVICIOS =================
@@ -650,7 +983,7 @@
       }
 
       // ================= FACTURA (registrar compra/servicio) =================
-      function nuevaLinea(){ return { refId:"", nuevoNombre:"", unidad:"", cantidad:1, montoOriginal:0 }; }
+      function nuevaLinea(){ return { refId:"", nuevoNombre:"", unidad:"", cantidad:1, montoOriginal:0, descOriginal:"", recordarAlias:false }; }
       function initFacturaDraft(){
         APP.facturaDraft = { fecha:todayISO(), proveedor:"", naturaleza:"Insumo", moneda:"Bs",
           tasaDolar:0, tasaEuro:0, tasaFecha:"", tasaDiasRetro:0, tasaMsg:"",
@@ -695,10 +1028,39 @@
         if (!d.tasaDolar && !d.tasaMsg) recargarTasa();
       }
 
+      // Normaliza un nombre para comparar (minúsculas, sin tildes, espacios colapsados).
+      function normNombre(s){
+        s = String(s==null?"":s).toLowerCase().trim();
+        try { s = s.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); } catch(e){}
+        return s.replace(/\s+/g," ");
+      }
+      // Lista de alias (otros nombres/marcas) de un insumo, saneada.
+      function aliasList(ins){
+        if (!ins || !Array.isArray(ins.alias)) return [];
+        return ins.alias.map(function(a){ return String(a||"").trim(); }).filter(Boolean);
+      }
+      // Busca un insumo por su nombre canónico o por cualquiera de sus alias.
+      function buscarInsumoPorNombre(txt){
+        var n = normNombre(txt); if (!n) return null;
+        var lista = get("Insumo"), i, ins, al, j;
+        for (i=0;i<lista.length;i++){ ins=lista[i]; if (normNombre(ins.nombre)===n) return ins; }
+        for (i=0;i<lista.length;i++){ ins=lista[i]; al=aliasList(ins); for(j=0;j<al.length;j++){ if(normNombre(al[j])===n) return ins; } }
+        return null;
+      }
+      // Busca un servicio por su nombre canónico.
+      function buscarServicioPorNombre(txt){
+        var n = normNombre(txt); if (!n) return null;
+        var lista = get("Servicio"), i;
+        for (i=0;i<lista.length;i++){ if (normNombre(lista[i].nombre)===n) return lista[i]; }
+        return null;
+      }
       function refOptions(naturaleza){
         var ent = naturaleza==="Servicio" ? "Servicio" : "Insumo";
-        var opts = get(ent).map(function(x){ return { value:x.id, label:x.nombre }; })
-          .sort(function(a,b){ return a.label.localeCompare(b.label); });
+        var opts = get(ent).map(function(x){
+          var lbl = x.nombre;
+          if (ent==="Insumo" && x.esGeneral) lbl += "  · general";
+          return { value:x.id, label:lbl };
+        }).sort(function(a,b){ return a.label.localeCompare(b.label); });
         opts.unshift({ value:"__nuevo__", label:"➕ Crear nuevo…" });
         opts.unshift({ value:"", label:"(selecciona)" });
         return opts;
@@ -829,12 +1191,23 @@
         var d = APP.facturaDraft;
         meta = meta || {};
         if (!arr || !arr.length){ flash("No se encontraron l\u00edneas v\u00e1lidas.","warning"); return; }
+        var esInsumo = d.naturaleza!=="Servicio";
+        var reconocidas = 0;
         var nuevas = arr.map(function(it){
           var l = nuevaLinea();
-          l.nuevoNombre = String(it.nombre || it.descripcion || it.concepto || "").trim();
+          // Descripci\u00f3n original tal como aparece en la factura (la conserva la IA).
+          l.descOriginal = String(it.descripcion || it.descripcionOriginal || it.nombre || it.concepto || "").trim();
+          // Nombre can\u00f3nico sugerido por la IA (nombre del cat\u00e1logo) o vac\u00edo si no lo reconoci\u00f3.
+          var canon = String((esInsumo ? (it.insumo!=null?it.insumo:it.insumoReconocido) : (it.servicio!=null?it.servicio:it.servicioReconocido)) || "").trim();
           l.unidad = String(it.unidad || "").trim();
           l.cantidad = Number(it.cantidad || it.cant || 1) || 1;
           l.montoOriginal = Number(it.montoOriginal != null ? it.montoOriginal : (it.monto != null ? it.monto : (it.total != null ? it.total : 0))) || 0;
+          // Intentar emparejar con un \u00edtem existente (por nombre can\u00f3nico o alias; luego por la descripci\u00f3n original).
+          var ref = null;
+          if (esInsumo) ref = buscarInsumoPorNombre(canon) || buscarInsumoPorNombre(l.descOriginal);
+          else ref = buscarServicioPorNombre(canon) || buscarServicioPorNombre(l.descOriginal);
+          if (ref){ l.refId = ref.id; l.nuevoNombre = ""; reconocidas++; }
+          else { l.refId = ""; l.nuevoNombre = canon || l.descOriginal; }
           return l;
         });
         d.lineas = nuevas.length ? nuevas : [ nuevaLinea() ];
@@ -849,13 +1222,32 @@
         var huboTotal = (total != null && !isNaN(Number(total)));
         if (huboTotal){ d.montoTotalFactura = Number(total)||0; detalles.push("monto total"); }
         recomputarAjuste();
-        var extra = detalles.length ? " Tambi\u00e9n se trajo: "+detalles.join(", ")+". Rev\u00edsalo." : "";
-        flash("Se cargaron "+nuevas.length+" l\u00ednea(s). As\u00edgnalas a un "+(d.naturaleza==="Servicio"?"servicio":"insumo")+"."+extra,"success");
+        var extra = detalles.length ? " Tambi\u00e9n se trajo: "+detalles.join(", ")+"." : "";
+        var noRec = nuevas.length - reconocidas;
+        var recMsg = reconocidas ? (" "+reconocidas+" se reconoci\u00f3(eron) autom\u00e1ticamente.") : "";
+        var pendMsg = noRec>0 ? (" Falta(n) "+noRec+" por asignar.") : "";
+        flash("Se cargaron "+nuevas.length+" l\u00ednea(s)."+recMsg+pendMsg+" Rev\u00edsalas."+extra,"success");
         if (monCambio) recargarTasa(); else renderFactura();
       }
       // Prompt que el usuario copia y entrega a su IA junto con el archivo de la factura.
       function promptFacturaIA(){
-        return [
+        var d = APP.facturaDraft || {};
+        var esInsumo = d.naturaleza!=="Servicio";
+        var ent = esInsumo ? "Insumo" : "Servicio";
+        // Cat\u00e1logo LIGERO: solo nombre + unidad (+ otros nombres/alias) de lo ya registrado.
+        var catLines = get(ent).slice().sort(function(a,b){ return String(a.nombre||"").localeCompare(String(b.nombre||"")); })
+          .map(function(x){
+            if (esInsumo){
+              var al = aliasList(x);
+              return "- " + x.nombre + " (unidad: " + (x.unidad||"s/u") + ")" + (al.length ? " [otros nombres: " + al.join(", ") + "]" : "");
+            }
+            return "- " + x.nombre;
+          });
+        var catBloque = catLines.length ? catLines.join("\n") : ("(a\u00fan no hay " + (esInsumo?"insumos":"servicios") + " registrados)");
+        var lineObj = esInsumo
+          ? '    { "descripcion": "texto tal cual aparece en la factura", "insumo": "nombre EXACTO del cat\u00e1logo o vac\u00edo si no lo reconoces", "cantidad": 1, "montoOriginal": 0 }'
+          : '    { "descripcion": "texto tal cual aparece en la factura", "servicio": "nombre EXACTO del cat\u00e1logo o vac\u00edo si no lo reconoces", "cantidad": 1, "montoOriginal": 0 }';
+        var out = [
           "Eres un asistente que extrae los datos de una factura.",
           "Te adjunto una factura (puede ser una imagen, un PDF o cualquier formato).",
           "Lee la factura y devuelve \u00daNICAMENTE un JSON v\u00e1lido, sin texto adicional ni explicaciones, con esta estructura exacta:",
@@ -866,18 +1258,36 @@
           '  "moneda": "Bs | USD | EUR",',
           '  "total": 0,',
           '  "lineas": [',
-          '    { "nombre": "descripci\u00f3n del art\u00edculo o servicio", "cantidad": 1, "montoOriginal": 0 }',
+          lineObj,
           "  ]",
           "}",
+          "",
+          "Cat\u00e1logo de " + (esInsumo?"insumos":"servicios") + " ya registrados (empareja cada l\u00ednea con uno de estos cuando corresponda):",
+          catBloque,
           "",
           "Reglas:",
           "- 'moneda' debe ser exactamente Bs (bol\u00edvares), USD (d\u00f3lares) o EUR (euros).",
           "- 'fecha' en formato AAAA-MM-DD.",
           "- 'total' es el monto total de la factura (n\u00famero, sin s\u00edmbolos ni separadores de miles).",
-          "- Cada l\u00ednea: 'nombre' (texto), 'cantidad' (n\u00famero) y 'montoOriginal' (monto de esa l\u00ednea en la moneda de la factura, n\u00famero).",
-          "- Usa punto como separador decimal. Si un dato no aparece en la factura, usa \"\" para texto o 0 para n\u00fameros.",
+          "- 'descripcion': copia el texto del art\u00edculo tal como aparece en la factura (con su marca si la trae)."
+        ];
+        if (esInsumo){
+          out.push(
+            "- 'insumo': si la l\u00ednea corresponde a uno del cat\u00e1logo, pon su nombre EXACTO (aunque en la factura venga con otra marca o un nombre distinto). Si no reconoces a cu\u00e1l corresponde, d\u00e9jalo vac\u00edo.",
+            "- 'cantidad': convi\u00e9rtela a la UNIDAD del insumo del cat\u00e1logo que elegiste. Si dejaste 'insumo' vac\u00edo, pon la cantidad tal como viene en la factura.",
+            "  Equivalencias para convertir:",
+            "    1 L = 1000 ml ; 1 ml = 1 cc (son lo mismo) ; 1 kg = 1000 g ; y adem\u00e1s ml/cc \u2194 g se tratan 1:1 (1 ml = 1 g).",
+            "  Ejemplo: el insumo del cat\u00e1logo es 'Aceite' con unidad 'ml'; la factura trae 'Aceite Marca X 1,5 L' => insumo \"Aceite\", cantidad 1500."
+          );
+        } else {
+          out.push("- 'servicio': si la l\u00ednea corresponde a uno del cat\u00e1logo, pon su nombre EXACTO. Si no, d\u00e9jalo vac\u00edo.");
+        }
+        out.push(
+          "- 'montoOriginal': monto de esa l\u00ednea en la moneda de la factura (n\u00famero). NO lo modifiques por la conversi\u00f3n de cantidad.",
+          "- Usa punto como separador decimal. Si un dato no aparece, usa vac\u00edo para texto o 0 para n\u00fameros.",
           "- Responde solo con el JSON."
-        ].join("\n");
+        );
+        return out.join("\n");
       }
       // Intenta copiar al portapapeles (API moderna y, si falla, execCommand).
       function copiarAlPortapapeles(texto){
@@ -907,7 +1317,7 @@
         var pasos = el("ol",{class:"text-small mb-2"});
         pasos.appendChild(el("li",{},["Pulsa \u201cCopiar instrucciones\u201d para copiar el prompt al portapapeles."]));
         pasos.appendChild(el("li",{},["Abre tu asistente de IA (ChatGPT, Gemini, etc.), pega las instrucciones y adjunta la factura: una imagen, un PDF o cualquier formato."]));
-        pasos.appendChild(el("li",{},["La IA extraer\u00e1 proveedor, fecha, moneda, total y las l\u00edneas, y devolver\u00e1 un JSON."]));
+        pasos.appendChild(el("li",{},["La IA extraer\u00e1 proveedor, fecha, moneda, total y las l\u00edneas, intentar\u00e1 reconocer a qu\u00e9 \u00edtem del cat\u00e1logo corresponde cada l\u00ednea y convertir\u00e1 la cantidad a la unidad de ese \u00edtem, y devolver\u00e1 un JSON."]));
         pasos.appendChild(el("li",{},["Copia ese JSON, p\u00e9galo en el cuadro de abajo y pulsa \u201cCargar desde JSON\u201d."]));
         box.appendChild(pasos);
         var btnCopy = el("button",{class:"btn btn-outline-primary btn-sm mb-3",type:"button"},["\ud83d\udccb Copiar instrucciones"]);
@@ -976,8 +1386,12 @@
           // ref
           var tdRef = el("td");
           var sel = selectField("facLnRef"+i, refOptions(d.naturaleza), l.refId||"");
-          sel.addEventListener("change", function(){ l.refId = readVal("facLnRef"+i); if(l.refId!=="__nuevo__") l.nuevoNombre=""; renderFactura(); });
+          sel.addEventListener("change", function(){ l.refId = readVal("facLnRef"+i); if(l.refId!=="__nuevo__") l.nuevoNombre=""; l.recordarAlias=false; renderFactura(); });
           tdRef.appendChild(sel);
+          // Descripci\u00f3n original tal como vino en la factura (ayuda a confirmar el emparejamiento).
+          if (l.descOriginal){
+            tdRef.appendChild(el("div",{class:"text-small text-muted mt-1"},["Factura: \u201c"+l.descOriginal+"\u201d"]));
+          }
           if (l.refId==="__nuevo__"){
             var inN = inputText("facLnNombre"+i, l.nuevoNombre, {placeholder:"Nombre nuevo"});
             inN.classList.add("mt-1");
@@ -988,6 +1402,21 @@
               inU.classList.add("mt-1");
               inU.addEventListener("change", function(){ l.unidad=readVal("facLnUnidad"+i); });
               tdRef.appendChild(inU);
+            }
+          } else if (d.naturaleza==="Insumo" && l.refId && l.descOriginal){
+            // Ofrecer recordar la descripci\u00f3n de la factura como "otro nombre" (alias) del insumo elegido,
+            // s\u00f3lo si a\u00fan no coincide con su nombre o un alias existente.
+            var insSel = findById("Insumo", l.refId);
+            var yaConocido = insSel && (normNombre(insSel.nombre)===normNombre(l.descOriginal) ||
+              aliasList(insSel).some(function(a){ return normNombre(a)===normNombre(l.descOriginal); }));
+            if (insSel && !yaConocido){
+              var chkWrap = el("div",{class:"form-check mt-1"});
+              var chkA = el("input",{type:"checkbox",class:"form-check-input",id:"facLnAlias"+i});
+              if (l.recordarAlias) chkA.checked = true;
+              chkA.addEventListener("change", function(){ l.recordarAlias = !!chkA.checked; });
+              var lblA = el("label",{class:"form-check-label text-small","for":"facLnAlias"+i},["Recordar este nombre para \u201c"+insSel.nombre+"\u201d"]);
+              chkWrap.appendChild(chkA); chkWrap.appendChild(lblA);
+              tdRef.appendChild(chkWrap);
             }
           }
           tr.appendChild(tdRef);
@@ -1099,7 +1528,7 @@
           var l = lineas[i++];
           if (l.refId!=="__nuevo__") return next();
           var base = { nombre:(l.nuevoNombre||"").trim(), categoria:"", descripcion:"", ultimoProveedor:"", ultimoCostoUSD:0 };
-          if (ent==="Insumo"){ base.unidad=l.unidad||""; base.existencia=0; base.consumoDiario=0; base.consumoMetodo="directo"; base.consumoValor=0; base.consumoDiasUnidad=0; base.stockMinimoDias=0; base.diasCompra=0; base.ultCompraCostoUSD=0; base.ultCompraCantidad=0; base.fechaUltimoInventario=APP.facturaDraft.fecha; }
+          if (ent==="Insumo"){ base.unidad=l.unidad||""; base.existencia=0; base.consumoDiario=0; base.consumoMetodo="directo"; base.consumoValor=0; base.consumoDiasUnidad=0; base.stockMinimoDias=0; base.diasCompra=0; base.ultCompraCostoUSD=0; base.ultCompraCantidad=0; base.fechaUltimoInventario=APP.facturaDraft.fecha; base.alias=[]; base.esGeneral=false; base.llevaPlan=false; base.plan=[]; }
           return sdAdd(ent, base).then(function(res){ l.refId = idOf(res); return next(); });
         }
         return next();
@@ -1119,13 +1548,21 @@
             if (naturaleza==="Insumo"){
               var ins = findById("Insumo", l.refId);
               if (ins){
-                return sdUpdate(ins.id, {
+                var patchIns = {
                   existencia: (Number(ins.existencia)||0) + cant,
                   ultimoProveedor: APP.facturaDraft.proveedor,
                   ultimoCostoUSD: costoUnitUSD,
                   ultCompraCostoUSD: finalUSD,
                   ultCompraCantidad: cant
-                }).then(next);
+                };
+                // Aprendizaje de alias: recordar el nombre de la factura como otro nombre del insumo.
+                if (l.recordarAlias && l.descOriginal){
+                  var al = aliasList(ins);
+                  var yaEsta = normNombre(ins.nombre)===normNombre(l.descOriginal) ||
+                    al.some(function(a){ return normNombre(a)===normNombre(l.descOriginal); });
+                  if (!yaEsta){ al.push(l.descOriginal.trim()); patchIns.alias = al; }
+                }
+                return sdUpdate(ins.id, patchIns).then(next);
               }
             } else {
               var sv = findById("Servicio", l.refId);
@@ -1195,6 +1632,46 @@
         cards.appendChild(metric("Costo mensual estimado", money(costoMes)));
         cards.appendChild(metric("Gasto del mes (facturas)", money(gastoMesUSD)));
         c.appendChild(cards);
+
+        // Panel informativo de tomas de hoy (plan de consumo)
+        (function(){
+          var hoy = todayISO();
+          var ahora = new Date();
+          var ahoraMin = ahora.getHours()*60 + ahora.getMinutes();
+          function horaAMin(h){ var p=String(h||"").split(":"); return (Number(p[0])||0)*60 + (Number(p[1])||0); }
+          var tomasHoy = [];
+          insumos.forEach(function(ins){
+            if(!ins.llevaPlan) return;
+            (Array.isArray(ins.plan)?ins.plan:[]).forEach(function(t){
+              if(tomaAplicaDia(t, hoy)){
+                var hr = tomaHoraRef(t);
+                tomasHoy.push({ ins:ins, toma:t, hora:hr, min:horaAMin(hr) });
+              }
+            });
+          });
+          if(!tomasHoy.length) return;
+          tomasHoy.sort(function(a,b){ return a.min - b.min; });
+          var vencidas = tomasHoy.filter(function(x){ return x.min <= ahoraMin; });
+          var proximas = tomasHoy.filter(function(x){ return x.min > ahoraMin; });
+          function filaToma(x){
+            return el("li",{class:"text-small"},[num2(Number(x.toma.cantidad)||0)+" "+(x.ins.unidad||"u")+" · "+x.ins.nombre+" · "+momentoLabel(x.toma.momento)+" ("+x.hora+")"+(x.toma.nota?(" – "+x.toma.nota):"")]);
+          }
+          var panel = el("div",{class:"row g-3 mb-3"});
+          var colV = el("div",{class:"col-12 col-md-6"});
+          var boxV = el("div",{class:"border rounded p-3 h-100 "+(vencidas.length?"border-warning":"")});
+          boxV.appendChild(el("div",{class:"fw-semibold mb-2"},["⏰ Ya debías consumir hoy"]));
+          if(vencidas.length){ var ulV=el("ul",{class:"mb-0"}); vencidas.forEach(function(x){ ulV.appendChild(filaToma(x)); }); boxV.appendChild(ulV); }
+          else boxV.appendChild(el("div",{class:"text-small text-muted"},["Nada pendiente por ahora."]));
+          colV.appendChild(boxV); panel.appendChild(colV);
+          var colP = el("div",{class:"col-12 col-md-6"});
+          var boxP = el("div",{class:"border rounded p-3 h-100"});
+          boxP.appendChild(el("div",{class:"fw-semibold mb-2"},["🔜 Próximas de hoy"]));
+          if(proximas.length){ var ulP=el("ul",{class:"mb-0"}); proximas.forEach(function(x){ ulP.appendChild(filaToma(x)); }); boxP.appendChild(ulP); }
+          else boxP.appendChild(el("div",{class:"text-small text-muted"},["No quedan tomas más tarde hoy."]));
+          colP.appendChild(boxP); panel.appendChild(colP);
+          c.appendChild(el("div",{class:"text-small text-muted mb-1"},["Recordatorio informativo (no marca ni descuenta existencias)."]));
+          c.appendChild(panel);
+        })();
 
         if (!APP.tableroFiltro) APP.tableroFiltro = "alerta";
         var pendientes = insumos.filter(function(x){ return calcInsumo(x).cantidadSugerida > 0; });
