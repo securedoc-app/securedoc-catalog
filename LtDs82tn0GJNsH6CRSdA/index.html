@@ -1658,7 +1658,7 @@
           var vencidas = tomasHoy.filter(function(x){ return x.min <= ahoraMin; });
           var proximas = tomasHoy.filter(function(x){ return x.min > ahoraMin; });
           function filaToma(x, stripe){
-            return el("li",{class:"text-small "+stripe},[num2(Number(x.toma.cantidad)||0)+" "+(x.ins.unidad||"u")+" · "+x.ins.nombre+" · "+momentoLabel(x.toma.momento)+" ("+x.hora+")"+(x.toma.nota?(" – "+x.toma.nota):"")]);
+            return el("li",{class:"text-small "+stripe},[momentoLabel(x.toma.momento)+" ("+x.hora+")"+(x.toma.nota?(" – "+x.toma.nota):"")+" · "+num2(Number(x.toma.cantidad)||0)+" "+(x.ins.unidad||"u")+" · "+x.ins.nombre]);
           }
           function listaTomas(arr){
             var ul = el("ul",{class:"plan-aviso mb-0"});
