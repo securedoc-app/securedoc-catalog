@@ -143,6 +143,25 @@
       }
       function readOnly(){ return !!(APP.ctx && APP.ctx.readOnly); }
 
+      // ---------- Modal reutilizable ----------
+      function abrirModal(titulo, bodyNode){
+        var old = byId("appModal"); if(old && old.parentNode) old.parentNode.removeChild(old);
+        var modal = el("div",{class:"modal fade",id:"appModal",tabindex:"-1","aria-hidden":"true"});
+        var dialog = el("div",{class:"modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable"});
+        var content = el("div",{class:"modal-content"});
+        var header = el("div",{class:"modal-header"});
+        header.appendChild(el("h5",{class:"modal-title"},[titulo||""]));
+        header.appendChild(el("button",{class:"btn-close",type:"button","data-bs-dismiss":"modal","aria-label":"Cerrar"}));
+        var body = el("div",{class:"modal-body"}); if(bodyNode) body.appendChild(bodyNode);
+        var footer = el("div",{class:"modal-footer"});
+        footer.appendChild(el("button",{class:"btn btn-secondary",type:"button","data-bs-dismiss":"modal"},["Cerrar"]));
+        content.appendChild(header); content.appendChild(body); content.appendChild(footer);
+        dialog.appendChild(content); modal.appendChild(dialog);
+        document.body.appendChild(modal);
+        modal.addEventListener("hidden.bs.modal", function(){ if(modal.parentNode) modal.parentNode.removeChild(modal); });
+        if(window.bootstrap && bootstrap.Modal){ bootstrap.Modal.getOrCreateInstance(modal).show(); }
+      }
+
       // ---------- Acceso a datos (SecureDoc) ----------
       function sdList(entidad){
         return SecureDoc.data.list({ where:[["entidad","==",entidad]], limit:500 })
@@ -1664,6 +1683,68 @@
       }
 
       // ================= TABLERO =================
+      // ---------- Recordatorio informativo (a solicitud, en modal) ----------
+      function tomasDeHoy(insumos){
+        var hoy = todayISO();
+        var arr = [];
+        (insumos||get("Insumo")).forEach(function(ins){
+          if(!ins.llevaPlan) return;
+          (Array.isArray(ins.plan)?ins.plan:[]).forEach(function(t){
+            if(tomaAplicaDia(t, hoy)) arr.push({ ins:ins, toma:t, hora:tomaHoraRef(t) });
+          });
+        });
+        return arr;
+      }
+      function mostrarModal(titulo, bodyNode, footerText){
+        var id = "appModal";
+        var prev = byId(id); if(prev) prev.remove();
+        var modal = el("div",{class:"modal fade",id:id,tabindex:"-1","aria-hidden":"true"});
+        var dialog = el("div",{class:"modal-dialog modal-dialog-scrollable modal-dialog-centered"});
+        var content = el("div",{class:"modal-content"});
+        var header = el("div",{class:"modal-header"});
+        header.appendChild(el("h5",{class:"modal-title"},[titulo]));
+        header.appendChild(el("button",{type:"button",class:"btn-close","data-bs-dismiss":"modal","aria-label":"Cerrar"}));
+        var mbody = el("div",{class:"modal-body"}); mbody.appendChild(bodyNode);
+        content.appendChild(header); content.appendChild(mbody);
+        var footer = el("div",{class:"modal-footer"});
+        if(footerText) footer.appendChild(el("span",{class:"text-small text-muted me-auto"},[footerText]));
+        footer.appendChild(el("button",{type:"button",class:"btn btn-secondary","data-bs-dismiss":"modal"},["Cerrar"]));
+        content.appendChild(footer);
+        dialog.appendChild(content); modal.appendChild(dialog);
+        document.body.appendChild(modal);
+        modal.addEventListener("hidden.bs.modal", function(){ modal.remove(); });
+        if(window.bootstrap && bootstrap.Modal){ bootstrap.Modal.getOrCreateInstance(modal).show(); }
+      }
+      function abrirRecordatorioModal(insumos){
+        var tomas = tomasDeHoy(insumos);
+        var ahora = new Date(); var ahoraMin = ahora.getHours()*60 + ahora.getMinutes();
+        function hm(h){ var p=String(h||"").split(":"); return (Number(p[0])||0)*60 + (Number(p[1])||0); }
+        var porMomento = {};
+        tomas.forEach(function(x){ (porMomento[x.toma.momento] = porMomento[x.toma.momento] || []).push(x); });
+        var body = el("div",{});
+        if(!tomas.length){ body.appendChild(el("p",{class:"text-muted mb-0"},["No hay tomas programadas para hoy."])); }
+        var idx = -1;
+        MOMENTOS.forEach(function(m){
+          var items = porMomento[m.k]; if(!items || !items.length) return;
+          idx++;
+          var vencido = hm(m.h) <= ahoraMin;
+          var grupo = el("div",{class:"mb-3 p-2 rounded "+((idx%2===0)?"bg-light":"")});
+          var head = el("div",{class:"d-flex align-items-center flex-wrap gap-2 mb-1"});
+          head.appendChild(el("span",{class:"fw-semibold"},[m.t]));
+          head.appendChild(el("span",{class:"text-small text-muted"},["("+m.h+")"]));
+          head.appendChild(el("span",{class:"badge "+(vencido?"bg-warning text-dark":"bg-info text-dark")},[vencido?"⏰ Ya debías":"🔜 Próxima"]));
+          grupo.appendChild(head);
+          var ul = el("ul",{class:"mb-0"});
+          items.forEach(function(x){
+            var hp = (horaValida(x.toma.hora) && x.toma.hora!==m.h) ? (" "+x.toma.hora) : "";
+            ul.appendChild(el("li",{class:"text-small"},[num2(Number(x.toma.cantidad)||0)+" "+(x.ins.unidad||"u")+" · "+x.ins.nombre+hp+(x.toma.nota?(" – "+x.toma.nota):"")]));
+          });
+          grupo.appendChild(ul);
+          body.appendChild(grupo);
+        });
+        mostrarModal("⏰ Recordatorio de hoy", body, "Informativo: no marca tomas ni descuenta existencias.");
+      }
+
       function viewTablero(c){
         h(c, "Tablero");
         var insumos = get("Insumo");
@@ -1688,53 +1769,13 @@
         cards.appendChild(metric("Gasto del mes (facturas)", money(gastoMesUSD)));
         c.appendChild(cards);
 
-        // Panel informativo de tomas de hoy (plan de consumo)
+        // Recordatorio informativo del día (a solicitud, en modal)
         (function(){
-          var hoy = todayISO();
-          var ahora = new Date();
-          var ahoraMin = ahora.getHours()*60 + ahora.getMinutes();
-          function horaAMin(h){ var p=String(h||"").split(":"); return (Number(p[0])||0)*60 + (Number(p[1])||0); }
-          var tomasHoy = [];
-          insumos.forEach(function(ins){
-            if(!ins.llevaPlan) return;
-            (Array.isArray(ins.plan)?ins.plan:[]).forEach(function(t){
-              if(tomaAplicaDia(t, hoy)){
-                var hr = tomaHoraRef(t);
-                tomasHoy.push({ ins:ins, toma:t, hora:hr, min:horaAMin(hr) });
-              }
-            });
-          });
-          if(!tomasHoy.length) return;
-          tomasHoy.sort(function(a,b){ return a.min - b.min; });
-          var vencidas = tomasHoy.filter(function(x){ return x.min <= ahoraMin; });
-          var proximas = tomasHoy.filter(function(x){ return x.min > ahoraMin; });
-          function filaToma(x, stripe){
-            return el("li",{class:"text-small "+stripe},[num2(Number(x.toma.cantidad)||0)+" "+(x.ins.unidad||"u")+" · "+x.ins.nombre+" · "+momentoLabel(x.toma.momento)+" ("+x.hora+")"+(x.toma.nota?(" – "+x.toma.nota):"")]);
-          }
-          function listaTomas(arr){
-            var ul = el("ul",{class:"plan-aviso mb-0"});
-            var prevMom = null, stripeIdx = -1;
-            arr.forEach(function(x){
-              if(x.toma.momento !== prevMom){ stripeIdx++; prevMom = x.toma.momento; }
-              ul.appendChild(filaToma(x, (stripeIdx % 2 === 0) ? "stripe-a" : "stripe-b"));
-            });
-            return ul;
-          }
-          var panel = el("div",{class:"row g-3 mb-3"});
-          var colV = el("div",{class:"col-12 col-md-6"});
-          var boxV = el("div",{class:"border rounded p-3 h-100 "+(vencidas.length?"border-warning":"")});
-          boxV.appendChild(el("div",{class:"fw-semibold mb-2"},["⏰ Ya debías consumir hoy"]));
-          if(vencidas.length){ boxV.appendChild(listaTomas(vencidas)); }
-          else boxV.appendChild(el("div",{class:"text-small text-muted"},["Nada pendiente por ahora."]));
-          colV.appendChild(boxV); panel.appendChild(colV);
-          var colP = el("div",{class:"col-12 col-md-6"});
-          var boxP = el("div",{class:"border rounded p-3 h-100"});
-          boxP.appendChild(el("div",{class:"fw-semibold mb-2"},["🔜 Próximas de hoy"]));
-          if(proximas.length){ boxP.appendChild(listaTomas(proximas)); }
-          else boxP.appendChild(el("div",{class:"text-small text-muted"},["No quedan tomas más tarde hoy."]));
-          colP.appendChild(boxP); panel.appendChild(colP);
-          c.appendChild(el("div",{class:"text-small text-muted mb-1"},["Recordatorio informativo (no marca ni descuenta existencias)."]));
-          c.appendChild(panel);
+          var tomas = tomasDeHoy(insumos);
+          var btnRec = el("button",{class:"btn btn-outline-primary mb-3",type:"button"},["⏰ Ver recordatorio de hoy"+(tomas.length?(" ("+tomas.length+")"):"")]);
+          if(!tomas.length){ btnRec.disabled = true; btnRec.title = "No hay tomas programadas para hoy."; }
+          btnRec.addEventListener("click", function(){ abrirRecordatorioModal(insumos); });
+          c.appendChild(btnRec);
         })();
 
         if (!APP.tableroFiltro) APP.tableroFiltro = "alerta";
