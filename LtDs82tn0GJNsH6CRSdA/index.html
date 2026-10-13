@@ -14,6 +14,12 @@
     body { background:#f6f7f9; }
     .sidebar .btn { text-align:left; }
     .sidebar .btn.active { font-weight:600; }
+    .brand-sub { font-size:.7rem; opacity:.75; letter-spacing:.03em; }
+    .navbar .nav-link { cursor:pointer; }
+    .navbar .nav-link.active { font-weight:600; text-decoration:underline; }
+    .brand-sub { font-size:.7rem; opacity:.75; letter-spacing:.03em; }
+    .navbar .nav-link { cursor:pointer; }
+    .navbar .nav-link.active { font-weight:600; text-decoration:underline; }
     .card-metric .big { font-size:1.6rem; font-weight:700; }
     .nowrap { white-space:nowrap; }
     .text-small { font-size:.85rem; }
@@ -33,28 +39,35 @@
   </style>
 </head>
 <body>
-  <nav class="navbar navbar-dark bg-dark">
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
     <div class="container-fluid">
-      <span class="navbar-brand mb-0 h1">Gestión de Necesidades</span>
-      <span id="ctxBadge" class="text-light text-small"></span>
+      <a class="navbar-brand d-flex flex-column lh-1 py-1" href="#" id="brandLink">
+        <span class="fs-4 fw-bold">InServ</span>
+        <span class="brand-sub">Insumos &amp; Servicios</span>
+      </a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav" aria-controls="mainNav" aria-expanded="false" aria-label="Menú">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="mainNav">
+        <ul class="navbar-nav me-auto mb-2 mb-lg-0" id="navPrincipal"></ul>
+        <div class="d-flex align-items-center flex-wrap gap-lg-3 gap-2">
+          <ul class="navbar-nav mb-2 mb-lg-0" id="navConfig"></ul>
+          <span id="ctxBadge" class="text-light text-small"></span>
+        </div>
+      </div>
     </div>
   </nav>
   <div class="container-fluid py-3">
     <div id="globalAlert"></div>
-    <div class="row g-3">
-      <div class="col-12 col-md-3 col-lg-2">
-        <div id="sidebar" class="sidebar d-grid gap-1"></div>
-      </div>
-      <div class="col-12 col-md-9 col-lg-10">
-        <main id="content" class="bg-white rounded shadow-sm p-3"></main>
-      </div>
-    </div>
+    <main id="content" class="bg-white rounded shadow-sm p-3"></main>
   </div>
 
   <script>
-  var APP = { ctx:null, view:"Tablero", cache:{}, detalleInsumoId:null, invInsumoId:null, facturaDraft:null, repMes:"ALL", listaCompras:null };
+  var APP = { ctx:null, view:"Tablero", configTab:"Categorías", cache:{}, detalleInsumoId:null, invInsumoId:null, facturaDraft:null, repMes:"ALL", listaCompras:null };
   var ENTIDADES = ["Categoria","Insumo","Servicio","Proveedor","Factura","LineaFactura","InventarioFisico"];
-  var MENU = ["Tablero","Categorías","Insumos","Plan de Consumo","Servicios","Proveedores","Registrar Factura","Inventario Físico","Lista de Compras","Reportes"];
+  // Pantallas operativas (barra superior) y maestros CRUD (dentro de ⚙️ Configuración).
+  var NAV_PRINCIPAL = ["Tablero","Plan de Consumo","Registrar Factura","Inventario Físico","Lista de Compras","Reportes"];
+  var CONFIG_TABS = ["Categorías","Insumos","Servicios","Proveedores"];
 
   if (typeof SecureDoc === "undefined") {
     document.getElementById("content").textContent = "No se detectó el entorno SecureDoc. Abra esta aplicación dentro de SecureDoc.";
@@ -162,20 +175,37 @@
       function boot(){
         var badge = byId("ctxBadge");
         badge.textContent = readOnly() ? "Modo solo lectura" : "";
-        buildSidebar();
+        buildNav();
         byId("content").textContent = "Cargando datos…";
         loadAll().then(function(){ render(); }).catch(function(e){
           byId("content").textContent = "";
           showError(e);
         });
       }
-      function buildSidebar(){
-        var sb = byId("sidebar"); clear(sb);
-        MENU.forEach(function(label){
-          var b = el("button", { class:"btn btn-outline-primary" + (APP.view===label?" active":""), type:"button" }, [ label ]);
-          b.addEventListener("click", function(){ APP.view = label; APP.detalleInsumoId = null; APP.invInsumoId = null; APP.facturaDraft = null; APP.listaCompras = null; buildSidebar(); render(); });
-          sb.appendChild(b);
-        });
+      function navTo(label){
+        APP.view = label; APP.detalleInsumoId = null; APP.invInsumoId = null; APP.facturaDraft = null; APP.listaCompras = null;
+        buildNav();
+        var nc = byId("mainNav");
+        if (nc && nc.classList.contains("show") && window.bootstrap && bootstrap.Collapse) { bootstrap.Collapse.getOrCreateInstance(nc).hide(); }
+        render();
+      }
+      function buildNav(){
+        var np = byId("navPrincipal"); if(np){ clear(np);
+          NAV_PRINCIPAL.forEach(function(label){
+            var li = el("li",{class:"nav-item"});
+            var a = el("a",{class:"nav-link"+(APP.view===label?" active":"")},[label]);
+            a.addEventListener("click", function(){ navTo(label); });
+            li.appendChild(a); np.appendChild(li);
+          });
+        }
+        var ncfg = byId("navConfig"); if(ncfg){ clear(ncfg);
+          var li = el("li",{class:"nav-item"});
+          var a = el("a",{class:"nav-link"+(APP.view==="Configuración"?" active":""),title:"Configuración"},["⚙️"]);
+          a.addEventListener("click", function(){ navTo("Configuración"); });
+          li.appendChild(a); ncfg.appendChild(li);
+        }
+        var bl = byId("brandLink");
+        if(bl && !bl.__wired){ bl.__wired = true; bl.addEventListener("click", function(ev){ ev.preventDefault(); navTo("Tablero"); }); }
       }
       function render(){
         var c = byId("content"); clear(c);
@@ -183,15 +213,12 @@
           if (APP.detalleInsumoId){ viewDetalleInsumo(c); return; }
           switch(APP.view){
             case "Tablero": viewTablero(c); break;
-            case "Categorías": viewCategorias(c); break;
-            case "Insumos": viewInsumos(c); break;
             case "Plan de Consumo": viewPlanSemanal(c); break;
-            case "Servicios": viewServicios(c); break;
-            case "Proveedores": viewProveedores(c); break;
             case "Registrar Factura": viewFactura(c); break;
             case "Inventario Físico": viewInventario(c); break;
             case "Lista de Compras": viewListaCompras(c); break;
             case "Reportes": viewReportes(c); break;
+            case "Configuración": viewConfiguracion(c); break;
             default: viewTablero(c);
           }
         } catch(e){ showError(e); }
@@ -379,6 +406,30 @@
           alClicFila(row);
         });
         return t;
+      }
+
+      // ================= CONFIGURACIÓN (maestros CRUD por pestañas) =================
+      function viewConfiguracion(c){
+        if (CONFIG_TABS.indexOf(APP.configTab) < 0) APP.configTab = "Categorías";
+        h(c, "⚙️ Configuración");
+        c.appendChild(el("p",{class:"text-small text-muted"},["Administra tus maestros. Usa las pestañas para cambiar entre Categorías, Insumos, Servicios y Proveedores."]));
+        var ul = el("ul",{class:"nav nav-tabs mb-3"});
+        CONFIG_TABS.forEach(function(tab){
+          var li = el("li",{class:"nav-item"});
+          var a = el("a",{class:"nav-link"+(APP.configTab===tab?" active":"")},[tab]);
+          a.addEventListener("click", function(){ APP.configTab = tab; render(); });
+          li.appendChild(a); ul.appendChild(li);
+        });
+        c.appendChild(ul);
+        var pane = el("div",{id:"configPane"});
+        c.appendChild(pane);
+        switch(APP.configTab){
+          case "Categorías": viewCategorias(pane); break;
+          case "Insumos": viewInsumos(pane); break;
+          case "Servicios": viewServicios(pane); break;
+          case "Proveedores": viewProveedores(pane); break;
+          default: viewCategorias(pane);
+        }
       }
 
       // ================= CATEGORÍAS =================
@@ -1658,7 +1709,7 @@
           var vencidas = tomasHoy.filter(function(x){ return x.min <= ahoraMin; });
           var proximas = tomasHoy.filter(function(x){ return x.min > ahoraMin; });
           function filaToma(x, stripe){
-            return el("li",{class:"text-small "+stripe},[momentoLabel(x.toma.momento)+" ("+x.hora+")"+(x.toma.nota?(" – "+x.toma.nota):"")+" · "+num2(Number(x.toma.cantidad)||0)+" "+(x.ins.unidad||"u")+" · "+x.ins.nombre]);
+            return el("li",{class:"text-small "+stripe},[num2(Number(x.toma.cantidad)||0)+" "+(x.ins.unidad||"u")+" · "+x.ins.nombre+" · "+momentoLabel(x.toma.momento)+" ("+x.hora+")"+(x.toma.nota?(" – "+x.toma.nota):"")]);
           }
           function listaTomas(arr){
             var ul = el("ul",{class:"plan-aviso mb-0"});
