@@ -651,7 +651,7 @@
     ySel.addEventListener("change", renderSummary);
   }
 
-  function renderSummary() {
+function renderSummary() {
     var m = +document.getElementById("sumMonth").value;
     var y = +document.getElementById("sumYear").value;
     var content = document.getElementById("summaryContent");
@@ -662,13 +662,15 @@
       var recs = state.records.filter(function (r) { return r.empresaId === c.id && inMonth(r.fecha, y, m); });
       recs.sort(function (a, b) { return a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0; });
 
+      var attMin = (c.horaExtraDiaria || 0) * 60; // attendance hour for this company
+
       var card = el("div", { class: "card mb-3" });
       card.append(el("div", { class: "card-header fw-bold" }, c.nombre));
       var body = el("div", { class: "card-body p-0" });
       var table = el("table", { class: "table table-sm mb-0 align-middle" });
       var thead = el("thead");
       var htr = el("tr");
-      ["Date", "Schedule", "Break", "Day Total"].forEach(function (h) { htr.append(el("th", null, h)); });
+      ["Date", "Schedule", "Break", "Attendance Hour", "Day Total"].forEach(function (h) { htr.append(el("th", null, h)); });
       thead.append(htr);
       table.append(thead);
 
@@ -676,7 +678,7 @@
       var monthTotal = 0;
       if (recs.length === 0) {
         var tr0 = el("tr");
-        tr0.append(el("td", { colspan: "4", class: "text-center text-muted py-2" }, "No records this month."));
+        tr0.append(el("td", { colspan: "5", class: "text-center text-muted py-2" }, "No records this month."));
         tbody.append(tr0);
       } else {
         recs.forEach(function (r) {
@@ -684,6 +686,7 @@
           tr.append(el("td", null, shortDate(r.fecha)));
           tr.append(el("td", null, (r.horaEntrada || "—") + " – " + (r.horaSalida || "—")));
           tr.append(el("td", null, (r.minutosReceso != null ? r.minutosReceso : 0) + " min"));
+          tr.append(el("td", null, fmtHM(attMin)));
           var t = computeTotal(r);
           tr.append(el("td", null, fmtHM(t)));
           if (t != null) monthTotal += t;
@@ -694,7 +697,7 @@
 
       var tfoot = el("tfoot");
       var ftr = el("tr", { class: "table-light fw-bold" });
-      ftr.append(el("td", { colspan: "3", class: "text-end" }, "Month total"));
+      ftr.append(el("td", { colspan: "4", class: "text-end" }, "Month total"));
       ftr.append(el("td", null, fmtHM(monthTotal)));
       tfoot.append(ftr);
       table.append(tfoot);
@@ -707,7 +710,6 @@
 
     content.append(el("div", { class: "alert alert-primary fw-bold mb-0" }, "General total: " + fmtHM(grand)));
   }
-
   /* ---------- wiring ---------- */
   function wireStaticHandlers() {
     document.querySelectorAll("[data-view]").forEach(function (btn) {
