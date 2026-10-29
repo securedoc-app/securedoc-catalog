@@ -1,0 +1,752 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hours Time Control</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/securedoc-app/securedoc-libs@main/tabla-de-datos/lib.js"></script>
+<style>
+  body { background:#f5f6f8; }
+  .nav-link.btn-link { color:#dee2e6; text-decoration:none; }
+  .nav-link.btn-link.active { color:#fff; font-weight:600; }
+  #alerts { top:1rem; right:1rem; z-index:2000; max-width:360px; }
+  .sortable { cursor:pointer; user-select:none; white-space:nowrap; }
+  .sortable .arrow { opacity:.6; font-size:.8em; }
+  .status-val { font-size:1.25rem; font-weight:600; }
+</style>
+</head>
+<body>
+
+<nav class="navbar navbar-expand bg-dark" data-bs-theme="dark">
+  <div class="container-fluid">
+    <span class="navbar-brand mb-0 h1">Hours Time Control</span>
+    <div class="navbar-nav">
+      <button type="button" class="nav-link btn btn-link" data-view="mark">Mark Attendance</button>
+      <button type="button" class="nav-link btn btn-link" data-view="records">Records</button>
+      <button type="button" class="nav-link btn btn-link" data-view="summary">Monthly Summary</button>
+    </div>
+  </div>
+</nav>
+
+<div id="alerts" class="position-fixed"></div>
+
+<main class="container py-4">
+
+  <!-- MARK ATTENDANCE -->
+  <section id="view-mark" class="d-none">
+    <h4 class="mb-3">Mark Attendance</h4>
+    <p id="todayLabel" class="text-muted"></p>
+
+    <div class="mb-3">
+      <label class="form-label d-block">Company</label>
+      <div class="btn-group" role="group" id="companyGroup"></div>
+    </div>
+
+    <div class="mb-4">
+      <button type="button" id="btnClockIn" class="btn btn-success me-2">Clock In</button>
+      <button type="button" id="btnClockOut" class="btn btn-danger">Clock Out</button>
+    </div>
+
+    <div class="card" style="max-width:520px;">
+      <div class="card-header">Today's status</div>
+      <div class="card-body">
+        <div class="row g-3 text-center">
+          <div class="col-6 col-md-3">
+            <div class="text-muted small">Time In</div>
+            <div class="status-val" id="stIn">—</div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="text-muted small">Time Out</div>
+            <div class="status-val" id="stOut">—</div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="text-muted small">Break</div>
+            <div class="status-val" id="stBreak">—</div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="text-muted small">Day Total</div>
+            <div class="status-val text-primary" id="stTotal">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- RECORDS -->
+  <section id="view-records" class="d-none">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h4 class="mb-0">Records</h4>
+      <button type="button" id="btnNew" class="btn btn-primary">New Record</button>
+    </div>
+    <div id="recordsTable"></div>
+  </section>
+
+  <!-- MONTHLY SUMMARY -->
+  <section id="view-summary" class="d-none">
+    <h4 class="mb-3">Monthly Summary</h4>
+    <div class="row g-2 mb-3" style="max-width:420px;">
+      <div class="col">
+        <label class="form-label">Month</label>
+        <select id="sumMonth" class="form-select"></select>
+      </div>
+      <div class="col">
+        <label class="form-label">Year</label>
+        <select id="sumYear" class="form-select"></select>
+      </div>
+    </div>
+    <div id="summaryContent"></div>
+  </section>
+
+</main>
+
+<!-- RECORD MODAL -->
+<div class="modal fade" id="recordModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="recordModalTitle">Record</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">Company</label>
+          <select id="recCompany" class="form-select"></select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Date</label>
+          <input type="date" id="recDate" class="form-control">
+        </div>
+        <div class="row">
+          <div class="col mb-3">
+            <label class="form-label">Time In</label>
+            <input type="time" id="recIn" class="form-control">
+          </div>
+          <div class="col mb-3">
+            <label class="form-label">Time Out</label>
+            <input type="time" id="recOut" class="form-control">
+          </div>
+        </div>
+        <div class="mb-1">
+          <label class="form-label">Break (minutes)</label>
+          <input type="number" min="0" step="1" id="recBreak" class="form-control">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="recSave">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- BREAK MODAL -->
+<div class="modal fade" id="breakModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Break time</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label">How many minutes of break today?</label>
+        <input type="number" min="0" step="1" id="brkMinutes" class="form-control" value="0">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="brkConfirm">Clock Out</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CONFIRM DELETE MODAL -->
+<div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Delete record</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">Are you sure you want to delete this record? This cannot be undone.</div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirmDelete">Delete</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var MONTHS = ["January","February","March","April","May","June",
+                "July","August","September","October","November","December"];
+
+  var state = {
+    companies: [],
+    records: [],
+    view: "mark",
+    selectedCompanyId: null,
+    editingId: null,
+    pendingClockOut: null,
+    deleteId: null
+  };
+
+  var dt = { filter: "", sort: { key: "fecha", dir: "desc" }, pageSize: 10, page: 1 };
+
+  var recordModal, breakModal, confirmModal;
+
+  /* ---------- helpers ---------- */
+  function el(tag, attrs, children) {
+    var e = document.createElement(tag);
+    if (attrs) {
+      for (var k in attrs) {
+        if (!attrs.hasOwnProperty(k)) continue;
+        if (k === "class") e.className = attrs[k];
+        else if (k === "text") e.textContent = attrs[k];
+        else e.setAttribute(k, attrs[k]);
+      }
+    }
+    if (children != null) {
+      var arr = Array.isArray(children) ? children : [children];
+      arr.forEach(function (c) {
+        if (c == null) return;
+        e.append(c.nodeType ? c : document.createTextNode(String(c)));
+      });
+    }
+    return e;
+  }
+  function setText(id, val) { var e = document.getElementById(id); if (e) e.textContent = val; }
+
+  function toMin(hhmm) {
+    if (!hhmm) return null;
+    var m = /^(\d{1,2}):(\d{2})$/.exec(hhmm);
+    if (!m) return null;
+    var h = +m[1], mi = +m[2];
+    if (h > 23 || mi > 59) return null;
+    return h * 60 + mi;
+  }
+  function fmtHM(min) {
+    if (min == null) return "—";
+    var sign = min < 0 ? "-" : "";
+    min = Math.abs(min);
+    return sign + Math.floor(min / 60) + ":" + String(min % 60).padStart(2, "0");
+  }
+  function pad2(n) { return String(n).padStart(2, "0"); }
+  function nowHM() { var d = new Date(); return pad2(d.getHours()) + ":" + pad2(d.getMinutes()); }
+  function todayISO() { var d = new Date(); return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()); }
+  function shortDate(iso) {
+    if (!iso) return "—";
+    var d = new Date(iso + "T00:00:00");
+    if (isNaN(d.getTime())) return iso;
+    return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+  }
+  function longDate(iso) {
+    var d = new Date(iso + "T00:00:00");
+    if (isNaN(d.getTime())) return iso;
+    return d.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  }
+  function inMonth(iso, y, m) {
+    if (!iso) return false;
+    var p = iso.split("-");
+    return (+p[0]) === y && (+p[1]) === m;
+  }
+  function companyById(id) {
+    for (var i = 0; i < state.companies.length; i++) if (state.companies[i].id === id) return state.companies[i];
+    return null;
+  }
+  function totalFor(empresaId, horaEntrada, horaSalida, minutosReceso) {
+    var inM = toMin(horaEntrada), outM = toMin(horaSalida);
+    if (inM == null || outM == null || outM <= inM) return null;
+    var t = outM - inM - (minutosReceso || 0);
+    if (t < 0) t = 0;
+    var c = companyById(empresaId);
+    t += (c && c.horaExtraDiaria ? c.horaExtraDiaria * 60 : 0);
+    return t;
+  }
+  function computeTotal(rec) { return totalFor(rec.empresaId, rec.horaEntrada, rec.horaSalida, rec.minutosReceso); }
+
+  function notify(msg, type) {
+    type = type || "info";
+    var box = el("div", { class: "alert alert-" + type + " alert-dismissible shadow-sm", role: "alert" }, msg);
+    var b = el("button", { type: "button", class: "btn-close", "data-bs-dismiss": "alert", "aria-label": "Close" });
+    box.append(b);
+    document.getElementById("alerts").append(box);
+    setTimeout(function () { if (box.parentNode) box.remove(); }, 5000);
+  }
+  function showError(err) {
+    var msg = (err && err.message) ? err.message : String(err);
+    notify(msg, "danger");
+  }
+
+  /* ---------- view switching ---------- */
+  function setView(v) {
+    state.view = v;
+    ["mark", "records", "summary"].forEach(function (name) {
+      document.getElementById("view-" + name).classList.toggle("d-none", name !== v);
+    });
+    document.querySelectorAll("[data-view]").forEach(function (b) {
+      b.classList.toggle("active", b.dataset.view === v);
+    });
+    renderCurrent();
+  }
+  function renderCurrent() {
+    if (state.view === "mark") renderMark();
+    else if (state.view === "records") renderRecords();
+    else renderSummary();
+  }
+
+  /* ---------- data bootstrap ---------- */
+  function ensureCompanies() {
+    return SecureDoc.data.list({ where: [["entidad", "==", "Empresa"]] }).then(function (list) {
+      var byName = {};
+      (list || []).forEach(function (c) { byName[c.nombre] = c; });
+      var needed = [["Belsize", 1], ["Hammersmith", 0]];
+      var chain = Promise.resolve();
+      needed.forEach(function (pair) {
+        if (!byName[pair[0]]) {
+          chain = chain.then(function () {
+            return SecureDoc.data.add({ entidad: "Empresa", nombre: pair[0], horaExtraDiaria: pair[1] })
+              .then(function (ref) { byName[pair[0]] = { id: ref.id, entidad: "Empresa", nombre: pair[0], horaExtraDiaria: pair[1] }; });
+          });
+        }
+      });
+      return chain.then(function () {
+        state.companies = needed.map(function (p) { return byName[p[0]]; });
+      });
+    });
+  }
+
+  function startWatch() {
+    try {
+      SecureDoc.data.watch(
+        { where: [["entidad", "==", "RegistroDiario"]] },
+        function (docs) { state.records = (docs || []).slice(); renderCurrent(); },
+        function (err) { showError(err); }
+      );
+    } catch (err) { showError(err); }
+  }
+
+  /* ---------- Mark Attendance ---------- */
+  function renderMark() {
+    var today = todayISO();
+    setText("todayLabel", "Today: " + longDate(today));
+
+    var group = document.getElementById("companyGroup");
+    group.textContent = "";
+    state.companies.forEach(function (c) {
+      var inputId = "comp_" + c.id;
+      var input = el("input", { type: "radio", class: "btn-check", name: "markCompany", id: inputId, autocomplete: "off" });
+      if (c.id === state.selectedCompanyId) input.checked = true;
+      input.addEventListener("change", function () { state.selectedCompanyId = c.id; renderMark(); });
+      var label = el("label", { class: "btn btn-outline-primary", "for": inputId, text: c.nombre });
+      group.append(input, label);
+    });
+
+    var rec = findRecord(state.selectedCompanyId, today);
+    setText("stIn", rec && rec.horaEntrada ? rec.horaEntrada : "—");
+    setText("stOut", rec && rec.horaSalida ? rec.horaSalida : "—");
+    setText("stBreak", rec && rec.minutosReceso != null ? (rec.minutosReceso + " min") : "—");
+    setText("stTotal", rec ? fmtHM(computeTotal(rec)) : "—");
+  }
+
+  function findRecord(cid, fecha) {
+    for (var i = 0; i < state.records.length; i++) {
+      var r = state.records[i];
+      if (r.empresaId === cid && r.fecha === fecha) return r;
+    }
+    return null;
+  }
+
+  function onClockIn() {
+    var cid = state.selectedCompanyId, today = todayISO();
+    if (!cid) { notify("Select a company first.", "warning"); return; }
+    var rec = findRecord(cid, today);
+    var t = nowHM();
+    if (rec) {
+      var patch = { horaEntrada: t };
+      patch.totalMinutosDia = totalFor(cid, t, rec.horaSalida, rec.minutosReceso) || 0;
+      SecureDoc.data.update(rec.id, patch)
+        .then(function () { notify("Entry time updated to " + t + ".", "success"); })
+        .catch(showError);
+    } else {
+      SecureDoc.data.add({
+        entidad: "RegistroDiario", empresaId: cid, fecha: today,
+        horaEntrada: t, horaSalida: "", minutosReceso: 0, totalMinutosDia: 0
+      }).then(function () { notify("Clocked in at " + t + ".", "success"); }).catch(showError);
+    }
+  }
+
+  function onClockOut() {
+    var cid = state.selectedCompanyId, today = todayISO();
+    if (!cid) { notify("Select a company first.", "warning"); return; }
+    var rec = findRecord(cid, today);
+    if (!rec || !rec.horaEntrada) { notify("Clock in first.", "warning"); return; }
+    var out = nowHM();
+    if (toMin(out) <= toMin(rec.horaEntrada)) { notify("Clock-out time must be after clock-in time.", "warning"); return; }
+    state.pendingClockOut = { id: rec.id, cid: cid, out: out, inT: rec.horaEntrada };
+    document.getElementById("brkMinutes").value = rec.minutosReceso || 0;
+    breakModal.show();
+  }
+
+  function onBreakConfirm() {
+    var p = state.pendingClockOut;
+    if (!p) return;
+    var brk = parseInt(document.getElementById("brkMinutes").value, 10);
+    if (isNaN(brk) || brk < 0) brk = 0;
+    var span = toMin(p.out) - toMin(p.inT);
+    if (brk > span) { notify("Break cannot exceed worked time (" + span + " min).", "warning"); return; }
+    var patch = { horaSalida: p.out, minutosReceso: brk };
+    patch.totalMinutosDia = totalFor(p.cid, p.inT, p.out, brk) || 0;
+    SecureDoc.data.update(p.id, patch).then(function () {
+      breakModal.hide();
+      state.pendingClockOut = null;
+      notify("Clocked out at " + p.out + ".", "success");
+    }).catch(showError);
+  }
+
+  /* ---------- Records ---------- */
+  var RECORD_COLS = [
+    { key: "fecha",  label: "Date",        disp: function (r) { return shortDate(r.fecha); }, sort: function (r) { return r.fecha || ""; } },
+    { key: "empresa",label: "Company",     disp: function (r) { var c = companyById(r.empresaId); return c ? c.nombre : "?"; }, sort: function (r) { var c = companyById(r.empresaId); return c ? c.nombre : ""; } },
+    { key: "in",     label: "In",          disp: function (r) { return r.horaEntrada || "—"; }, sort: function (r) { return r.horaEntrada || ""; } },
+    { key: "out",    label: "Out",         disp: function (r) { return r.horaSalida || "—"; }, sort: function (r) { return r.horaSalida || ""; } },
+    { key: "break",  label: "Break (min)", disp: function (r) { return r.minutosReceso != null ? r.minutosReceso : 0; }, sort: function (r) { return r.minutosReceso || 0; } },
+    { key: "total",  label: "Day Total",   disp: function (r) { return fmtHM(computeTotal(r)); }, sort: function (r) { var t = computeTotal(r); return t == null ? -1 : t; } }
+  ];
+
+  function renderRecords() { renderDataTable(); }
+
+  function renderDataTable() {
+    var container = document.getElementById("recordsTable");
+    container.textContent = "";
+
+    /* toolbar */
+    var toolbar = el("div", { class: "d-flex flex-wrap gap-2 align-items-center mb-2" });
+    var search = el("input", { type: "search", class: "form-control", placeholder: "Filter...", style: "max-width:240px;" });
+    search.value = dt.filter;
+    search.addEventListener("input", function () { dt.filter = search.value; dt.page = 1; renderDataTable(); });
+    toolbar.append(search);
+
+    var sizeSel = el("select", { class: "form-select", style: "max-width:130px;" });
+    [10, 25, 50, 100].forEach(function (n) {
+      var o = el("option", { value: String(n), text: n + " / page" });
+      if (n === dt.pageSize) o.selected = true;
+      sizeSel.append(o);
+    });
+    sizeSel.addEventListener("change", function () { dt.pageSize = +sizeSel.value; dt.page = 1; renderDataTable(); });
+    toolbar.append(sizeSel);
+
+    var spacer = el("div", { class: "ms-auto" });
+    toolbar.append(spacer);
+
+    var exportBtn = el("button", { type: "button", class: "btn btn-outline-secondary" }, "Export CSV");
+    exportBtn.addEventListener("click", function () { exportCSV(buildFilteredSorted()); });
+    toolbar.append(exportBtn);
+
+    container.append(toolbar);
+
+    /* filter + sort */
+    var rows = buildFilteredSorted();
+
+    /* paginate */
+    var totalRows = rows.length;
+    var pages = Math.max(1, Math.ceil(totalRows / dt.pageSize));
+    if (dt.page > pages) dt.page = pages;
+    var start = (dt.page - 1) * dt.pageSize;
+    var pageRows = rows.slice(start, start + dt.pageSize);
+
+    /* table */
+    var wrap = el("div", { class: "table-responsive bg-white border rounded" });
+    var table = el("table", { class: "table table-sm table-hover align-middle mb-0" });
+    var thead = el("thead");
+    var htr = el("tr");
+    RECORD_COLS.forEach(function (col) {
+      var arrow = "";
+      if (dt.sort.key === col.key) arrow = dt.sort.dir === "asc" ? " \u25B2" : " \u25BC";
+      var th = el("th", { class: "sortable" }, col.label);
+      if (arrow) th.append(el("span", { class: "arrow", text: arrow }));
+      th.addEventListener("click", function () {
+        if (dt.sort.key === col.key) dt.sort.dir = dt.sort.dir === "asc" ? "desc" : "asc";
+        else { dt.sort.key = col.key; dt.sort.dir = "asc"; }
+        renderDataTable();
+      });
+      htr.append(th);
+    });
+    htr.append(el("th", { class: "text-end" }, "Actions"));
+    thead.append(htr);
+    table.append(thead);
+
+    var tbody = el("tbody");
+    if (pageRows.length === 0) {
+      var tr0 = el("tr");
+      tr0.append(el("td", { colspan: String(RECORD_COLS.length + 1), class: "text-center text-muted py-3" }, "No records."));
+      tbody.append(tr0);
+    } else {
+      pageRows.forEach(function (r) {
+        var tr = el("tr");
+        RECORD_COLS.forEach(function (col) { tr.append(el("td", null, String(col.disp(r)))); });
+        var actTd = el("td", { class: "text-end text-nowrap" });
+        var editB = el("button", { type: "button", class: "btn btn-sm btn-outline-primary me-1" }, "Edit");
+        editB.addEventListener("click", function () { openRecordModal(r.id); });
+        var delB = el("button", { type: "button", class: "btn btn-sm btn-outline-danger" }, "Delete");
+        delB.addEventListener("click", function () { askDelete(r.id); });
+        actTd.append(editB, delB);
+        tr.append(actTd);
+        tbody.append(tr);
+      });
+    }
+    table.append(tbody);
+    wrap.append(table);
+    container.append(wrap);
+
+    /* pagination */
+    var foot = el("div", { class: "d-flex justify-content-between align-items-center mt-2" });
+    foot.append(el("small", { class: "text-muted" },
+      totalRows === 0 ? "0 records" : ("Showing " + (start + 1) + "–" + (start + pageRows.length) + " of " + totalRows)));
+    var pager = el("div", { class: "btn-group" });
+    var prev = el("button", { type: "button", class: "btn btn-sm btn-outline-secondary" }, "Prev");
+    if (dt.page <= 1) prev.disabled = true;
+    prev.addEventListener("click", function () { if (dt.page > 1) { dt.page--; renderDataTable(); } });
+    var info = el("button", { type: "button", class: "btn btn-sm btn-outline-secondary", disabled: "disabled" }, "Page " + dt.page + " / " + pages);
+    var next = el("button", { type: "button", class: "btn btn-sm btn-outline-secondary" }, "Next");
+    if (dt.page >= pages) next.disabled = true;
+    next.addEventListener("click", function () { if (dt.page < pages) { dt.page++; renderDataTable(); } });
+    pager.append(prev, info, next);
+    foot.append(pager);
+    container.append(foot);
+  }
+
+  function buildFilteredSorted() {
+    var rows = state.records.slice();
+    var f = dt.filter.trim().toLowerCase();
+    if (f) {
+      rows = rows.filter(function (r) {
+        return RECORD_COLS.some(function (c) { return String(c.disp(r)).toLowerCase().indexOf(f) !== -1; });
+      });
+    }
+    var sc = null;
+    RECORD_COLS.forEach(function (c) { if (c.key === dt.sort.key) sc = c; });
+    if (sc) {
+      rows.sort(function (a, b) {
+        var va = sc.sort(a), vb = sc.sort(b);
+        if (va < vb) return dt.sort.dir === "asc" ? -1 : 1;
+        if (va > vb) return dt.sort.dir === "asc" ? 1 : -1;
+        return 0;
+      });
+    }
+    return rows;
+  }
+
+  function csvCell(v) {
+    v = String(v);
+    if (/[",\n]/.test(v)) v = '"' + v.replace(/"/g, '""') + '"';
+    return v;
+  }
+  function exportCSV(rows) {
+    var header = RECORD_COLS.map(function (c) { return csvCell(c.label); }).join(",");
+    var lines = rows.map(function (r) {
+      return RECORD_COLS.map(function (c) { return csvCell(c.disp(r)); }).join(",");
+    });
+    var csv = [header].concat(lines).join("\n");
+    var blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    var url = URL.createObjectURL(blob);
+    var a = el("a", { href: url, download: "records.csv" });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  /* ---------- Record modal (create / edit) ---------- */
+  function openRecordModal(id) {
+    state.editingId = id || null;
+    setText("recordModalTitle", id ? "Edit Record" : "New Record");
+    var sel = document.getElementById("recCompany");
+    sel.textContent = "";
+    state.companies.forEach(function (c) { sel.append(el("option", { value: c.id, text: c.nombre })); });
+
+    if (id) {
+      var rec = null;
+      state.records.forEach(function (r) { if (r.id === id) rec = r; });
+      if (!rec) { notify("Record not found.", "warning"); return; }
+      sel.value = rec.empresaId;
+      document.getElementById("recDate").value = rec.fecha || "";
+      document.getElementById("recIn").value = rec.horaEntrada || "";
+      document.getElementById("recOut").value = rec.horaSalida || "";
+      document.getElementById("recBreak").value = rec.minutosReceso != null ? rec.minutosReceso : 0;
+    } else {
+      sel.value = state.selectedCompanyId || (state.companies[0] && state.companies[0].id) || "";
+      document.getElementById("recDate").value = todayISO();
+      document.getElementById("recIn").value = "";
+      document.getElementById("recOut").value = "";
+      document.getElementById("recBreak").value = 0;
+    }
+    recordModal.show();
+  }
+
+  function onRecSave() {
+    var cid = document.getElementById("recCompany").value;
+    var fecha = document.getElementById("recDate").value;
+    var inT = document.getElementById("recIn").value;
+    var outT = document.getElementById("recOut").value;
+    var brk = parseInt(document.getElementById("recBreak").value, 10);
+    if (isNaN(brk) || brk < 0) brk = 0;
+
+    if (!cid) { notify("Company is required.", "warning"); return; }
+    if (!fecha) { notify("Date is required.", "warning"); return; }
+    if (outT && !inT) { notify("Time in is required when time out is set.", "warning"); return; }
+    if (inT && outT) {
+      if (toMin(outT) <= toMin(inT)) { notify("Time out must be after time in.", "warning"); return; }
+      if (brk > (toMin(outT) - toMin(inT))) { notify("Break cannot exceed worked time.", "warning"); return; }
+    }
+    var dup = null;
+    state.records.forEach(function (r) {
+      if (r.empresaId === cid && r.fecha === fecha && r.id !== state.editingId) dup = r;
+    });
+    if (dup) { notify("A record for this company and date already exists.", "warning"); return; }
+
+    var data = {
+      entidad: "RegistroDiario", empresaId: cid, fecha: fecha,
+      horaEntrada: inT || "", horaSalida: outT || "", minutosReceso: brk
+    };
+    data.totalMinutosDia = totalFor(cid, inT, outT, brk) || 0;
+
+    var p = state.editingId ? SecureDoc.data.update(state.editingId, data) : SecureDoc.data.add(data);
+    p.then(function () { recordModal.hide(); notify("Record saved.", "success"); }).catch(showError);
+  }
+
+  function askDelete(id) { state.deleteId = id; confirmModal.show(); }
+  function onConfirmDelete() {
+    if (!state.deleteId) return;
+    SecureDoc.data.remove(state.deleteId).then(function () {
+      confirmModal.hide();
+      state.deleteId = null;
+      notify("Record deleted.", "success");
+    }).catch(showError);
+  }
+
+  /* ---------- Monthly Summary ---------- */
+  function populateSummaryControls() {
+    var now = new Date();
+    var mSel = document.getElementById("sumMonth");
+    mSel.textContent = "";
+    MONTHS.forEach(function (name, i) {
+      var o = el("option", { value: String(i + 1), text: name });
+      if (i === now.getMonth()) o.selected = true;
+      mSel.append(o);
+    });
+    var ySel = document.getElementById("sumYear");
+    ySel.textContent = "";
+    var cy = now.getFullYear();
+    for (var y = cy - 5; y <= cy + 1; y++) {
+      var o2 = el("option", { value: String(y), text: String(y) });
+      if (y === cy) o2.selected = true;
+      ySel.append(o2);
+    }
+    mSel.addEventListener("change", renderSummary);
+    ySel.addEventListener("change", renderSummary);
+  }
+
+  function renderSummary() {
+    var m = +document.getElementById("sumMonth").value;
+    var y = +document.getElementById("sumYear").value;
+    var content = document.getElementById("summaryContent");
+    content.textContent = "";
+    var grand = 0;
+
+    state.companies.forEach(function (c) {
+      var recs = state.records.filter(function (r) { return r.empresaId === c.id && inMonth(r.fecha, y, m); });
+      recs.sort(function (a, b) { return a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0; });
+
+      var card = el("div", { class: "card mb-3" });
+      card.append(el("div", { class: "card-header fw-bold" }, c.nombre));
+      var body = el("div", { class: "card-body p-0" });
+      var table = el("table", { class: "table table-sm mb-0 align-middle" });
+      var thead = el("thead");
+      var htr = el("tr");
+      ["Date", "Schedule", "Break", "Day Total"].forEach(function (h) { htr.append(el("th", null, h)); });
+      thead.append(htr);
+      table.append(thead);
+
+      var tbody = el("tbody");
+      var monthTotal = 0;
+      if (recs.length === 0) {
+        var tr0 = el("tr");
+        tr0.append(el("td", { colspan: "4", class: "text-center text-muted py-2" }, "No records this month."));
+        tbody.append(tr0);
+      } else {
+        recs.forEach(function (r) {
+          var tr = el("tr");
+          tr.append(el("td", null, shortDate(r.fecha)));
+          tr.append(el("td", null, (r.horaEntrada || "—") + " – " + (r.horaSalida || "—")));
+          tr.append(el("td", null, (r.minutosReceso != null ? r.minutosReceso : 0) + " min"));
+          var t = computeTotal(r);
+          tr.append(el("td", null, fmtHM(t)));
+          if (t != null) monthTotal += t;
+          tbody.append(tr);
+        });
+      }
+      table.append(tbody);
+
+      var tfoot = el("tfoot");
+      var ftr = el("tr", { class: "table-light fw-bold" });
+      ftr.append(el("td", { colspan: "3", class: "text-end" }, "Month total"));
+      ftr.append(el("td", null, fmtHM(monthTotal)));
+      tfoot.append(ftr);
+      table.append(tfoot);
+
+      body.append(table);
+      card.append(body);
+      content.append(card);
+      grand += monthTotal;
+    });
+
+    content.append(el("div", { class: "alert alert-primary fw-bold mb-0" }, "General total: " + fmtHM(grand)));
+  }
+
+  /* ---------- wiring ---------- */
+  function wireStaticHandlers() {
+    document.querySelectorAll("[data-view]").forEach(function (btn) {
+      btn.addEventListener("click", function () { setView(btn.dataset.view); });
+    });
+    document.getElementById("btnClockIn").addEventListener("click", onClockIn);
+    document.getElementById("btnClockOut").addEventListener("click", onClockOut);
+    document.getElementById("btnNew").addEventListener("click", function () { openRecordModal(null); });
+    document.getElementById("recSave").addEventListener("click", onRecSave);
+    document.getElementById("brkConfirm").addEventListener("click", onBreakConfirm);
+    document.getElementById("confirmDelete").addEventListener("click", onConfirmDelete);
+  }
+
+  /* ---------- init ---------- */
+  document.addEventListener("DOMContentLoaded", function () {
+    recordModal = new bootstrap.Modal(document.getElementById("recordModal"));
+    breakModal = new bootstrap.Modal(document.getElementById("breakModal"));
+    confirmModal = new bootstrap.Modal(document.getElementById("confirmModal"));
+    populateSummaryControls();
+    wireStaticHandlers();
+
+    if (typeof SecureDoc === "undefined") {
+      notify("SecureDoc is not available in this page.", "danger");
+      setView("mark");
+      return;
+    }
+
+    SecureDoc.ready(function () {
+      ensureCompanies().then(function () {
+        state.selectedCompanyId = state.companies[0] ? state.companies[0].id : null;
+        startWatch();
+        setView("mark");
+      }).catch(function (err) {
+        showError(err);
+        setView("mark");
+      });
+    });
+  });
+})();
+</script>
+</body>
+</html>
