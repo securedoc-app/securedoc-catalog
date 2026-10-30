@@ -9,7 +9,6 @@
   <script src="https://cdn.jsdelivr.net/gh/securedoc-app/securedoc-libs@main/input-numerico/lib.js"></script>
   <script src="https://cdn.jsdelivr.net/gh/securedoc-app/securedoc-libs@main/tasa-de-cambio/lib.js"></script>
   <script src="https://cdn.jsdelivr.net/gh/securedoc-app/securedoc-libs@main/tabla-de-datos/lib.js"></script>
-  <script src="https://cdn.jsdelivr.net/gh/securedoc-app/securedoc-libs@main/leer-factura/lib.js"></script>
   <style>
     body { background:#f6f7f9; }
     .sidebar .btn { text-align:left; }
@@ -61,24 +60,29 @@
     <div id="globalAlert"></div>
     <main id="content" class="bg-white rounded shadow-sm p-3"></main>
   </div>
+
   <script>
   var APP = { ctx:null, view:"Tablero", configTab:"Categorías", cache:{}, detalleInsumoId:null, invInsumoId:null, facturaDraft:null, repMes:"ALL", listaCompras:null };
   var ENTIDADES = ["Categoria","Insumo","Servicio","Proveedor","Factura","LineaFactura","InventarioFisico"];
+  // Pantallas operativas (barra superior) y maestros CRUD (dentro de ⚙️ Configuración).
   var NAV_PRINCIPAL = ["Tablero","Plan de Consumo","Registrar Factura","Inventario Físico","Lista de Compras","Reportes"];
   var CONFIG_TABS = ["Categorías","Insumos","Servicios","Proveedores"];
+
   if (typeof SecureDoc === "undefined") {
     document.getElementById("content").textContent = "No se detectó el entorno SecureDoc. Abra esta aplicación dentro de SecureDoc.";
   } else {
     SecureDoc.ready(function(ctx){
       APP.ctx = ctx || {};
       boot();
+
+      // ---------- Helpers DOM ----------
       function el(tag, attrs, children){
         var n = document.createElement(tag);
         if (attrs){
           Object.keys(attrs).forEach(function(k){
             if (k === "class") n.className = attrs[k];
             else if (k === "text") n.textContent = attrs[k];
-            else if (k === "html") {  }
+            else if (k === "html") { /* nunca usamos html dinámico */ }
             else if (k in n && k !== "list") { try { n[k] = attrs[k]; } catch(e){ n.setAttribute(k, attrs[k]); } }
             else n.setAttribute(k, attrs[k]);
           });
@@ -91,6 +95,8 @@
       }
       function clear(node){ while(node.firstChild) node.removeChild(node.firstChild); }
       function byId(id){ return document.getElementById(id); }
+
+      // ---------- Formato / fechas ----------
       var nfUSD = new Intl.NumberFormat("es-VE", { minimumFractionDigits:2, maximumFractionDigits:2 });
       var nf2 = new Intl.NumberFormat("es-VE", { minimumFractionDigits:0, maximumFractionDigits:2 });
       function money(n){ n = Number(n); if(!isFinite(n)) n = 0; return "$ " + nfUSD.format(n); }
@@ -118,6 +124,8 @@
         return isoFromDate(d);
       }
       function monthKey(iso){ return String(iso||"").slice(0,7); }
+
+      // ---------- Avisos ----------
       function flash(msg, type){
         var cont = byId("globalAlert");
         clear(cont);
@@ -133,6 +141,8 @@
         flash(msg, "danger");
       }
       function readOnly(){ return !!(APP.ctx && APP.ctx.readOnly); }
+
+      // ---------- Modal reutilizable ----------
       function abrirModal(titulo, bodyNode){
         var old = byId("appModal"); if(old && old.parentNode) old.parentNode.removeChild(old);
         var modal = el("div",{class:"modal fade",id:"appModal",tabindex:"-1","aria-hidden":"true"});
@@ -150,6 +160,8 @@
         modal.addEventListener("hidden.bs.modal", function(){ if(modal.parentNode) modal.parentNode.removeChild(modal); });
         if(window.bootstrap && bootstrap.Modal){ bootstrap.Modal.getOrCreateInstance(modal).show(); }
       }
+
+      // ---------- Acceso a datos (SecureDoc) ----------
       function sdList(entidad){
         return SecureDoc.data.list({ where:[["entidad","==",entidad]], limit:500 })
           .then(function(rows){ return rows || []; });
@@ -160,6 +172,8 @@
       }
       function sdUpdate(id, patch){ return SecureDoc.data.update(id, patch); }
       function sdRemove(id){ return SecureDoc.data.remove(id); }
+
+      // ---------- Store (una sola carga por entidad, recarga tras escribir) ----------
       function loadEntidad(entidad){
         return sdList(entidad).then(function(rows){ APP.cache[entidad] = rows; return rows; });
       }
@@ -174,6 +188,8 @@
       }
       function nombreCategoria(id){ var c = findById("Categoria", id); return c ? c.nombre : ""; }
       function nombreRef(entidad, id){ var r = findById(entidad, id); return r ? r.nombre : ""; }
+
+      // ---------- Boot / navegación ----------
       function boot(){
         var badge = byId("ctxBadge");
         badge.textContent = readOnly() ? "Modo solo lectura" : "";
@@ -236,6 +252,8 @@
         if (extra) head.appendChild(extra);
         c.appendChild(head);
       }
+
+      // ---------- Cálculos de insumo ----------
       function calcInsumo(ins){
         var cd = Number(ins.consumoDiario) || 0;
         var ex = Number(ins.existencia) || 0;
@@ -244,12 +262,14 @@
         if (transc < 0) transc = 0;
         var proy = ex - (transc * cd);
         if (!isFinite(proy)) proy = ex;
+        // Costo mensual = (costo USD de la última compra × consumo diario × 30) / cantidad de la última compra.
         var ultCompraUSD = Number(ins.ultCompraCostoUSD);
         var ultCompraCant = Number(ins.ultCompraCantidad);
         var costoMes;
         if (isFinite(ultCompraUSD) && isFinite(ultCompraCant) && ultCompraCant > 0){
           costoMes = (ultCompraUSD * cd * 30) / ultCompraCant;
         } else {
+          // Compatibilidad con insumos previos: usa el último costo unitario.
           costoMes = cd * 30 * (Number(ins.ultimoCostoUSD) || 0);
         }
         if (!isFinite(costoMes)) costoMes = 0;
@@ -258,51 +278,9 @@
         var minDias = Number(ins.stockMinimoDias) || 0;
         var cicloDias = Number(ins.diasCompra) || 0;
         var objetivo = cd * (cicloDias + minDias);
-        var sugeridaBruta = Math.max(0, Math.ceil(objetivo - proy));
-        if (!isFinite(sugeridaBruta)) sugeridaBruta = 0;
-        var sugerida = redondearPresentacion(sugeridaBruta, ins);
-        var stockMinU = cd * minDias;
-        var enReorden = (cd > 0) && (proy <= stockMinU);
-        return { diasExistencia: dias, existenciaProyectada: proy, diasProyectados: diasProy, consumoMensual: cd * 30, costoMesUSD: costoMes, fechaAgote: fechaAgote, cantidadSugerida: sugerida, cantidadSugeridaBruta: sugeridaBruta, enReorden: enReorden, transcurridos: transc };
-      }
-      function presUnid(ins){ var p = Number(ins.unidadesPorPresentacion)||0; return p>0 ? p : 0; }
-      function redondearPresentacion(cant, ins){
-        var p = presUnid(ins);
-        var q = Number(cant)||0; if (q<0) q=0;
-        if (p>0) q = Math.ceil(q/p)*p;
-        return q;
-      }
-      function pluralPres(ins, n){
-        var base = (ins.nombrePresentacion||"").trim();
-        if (!base) return "";
-        if (Math.abs(n)===1) return base;
-        if (/[aeiouáéíóú]$/i.test(base)) return base+"s";
-        if (/z$/i.test(base)) return base.slice(0,-1)+"ces";
-        return base+"es";
-      }
-      function textoCompra(ins, cant){
-        var u = ins.unidad||"u";
-        var txt = num2(cant)+" "+u;
-        var p = presUnid(ins);
-        if (p>0){ var np = cant/p; txt += " ("+num2(np)+" "+pluralPres(ins, np)+")"; }
-        return txt;
-      }
-      function presTexto(ins, cant){
-        var p = presUnid(ins);
-        if (p<=0) return "—";
-        var np = (Number(cant)||0)/p;
-        return num2(np)+" "+pluralPres(ins, np);
-      }
-      function stockMaxDias(ins){ return (Number(ins.stockMinimoDias)||0) + (Number(ins.diasCompra)||0); }
-      function estadoStock(ins){
-        var cc = calcInsumo(ins);
-        var cd = Number(ins.consumoDiario)||0;
-        if (cd<=0 || cc.diasProyectados==null) return "neutro";
-        var min = Number(ins.stockMinimoDias)||0;
-        var max = stockMaxDias(ins);
-        if (cc.diasProyectados <= min) return "danger";
-        if (cc.diasProyectados <= max) return "success";
-        return "warning";
+        var sugerida = Math.max(0, Math.ceil(objetivo - proy));
+        if (!isFinite(sugerida)) sugerida = 0;
+        return { diasExistencia: dias, existenciaProyectada: proy, diasProyectados: diasProy, consumoMensual: cd * 30, costoMesUSD: costoMes, fechaAgote: fechaAgote, cantidadSugerida: sugerida, transcurridos: transc };
       }
       function enAlerta(ins){
         var cc = calcInsumo(ins);
@@ -310,6 +288,9 @@
         if (cc.diasProyectados != null && cc.diasProyectados <= minDias) return true;
         return false;
       }
+
+      // ---------- Plan de consumo (tomas) ----------
+      // Momentos del día, en orden, con una hora de referencia para ordenar/comparar.
       var MOMENTOS = [
         { k:"ayunas",         t:"En ayunas / al despertar",   h:"06:30" },
         { k:"antes_desayuno", t:"Antes del desayuno",          h:"07:00" },
@@ -322,21 +303,25 @@
         { k:"cena",           t:"Con / después de la cena",      h:"20:00" },
         { k:"dormir",         t:"Antes de dormir",              h:"22:00" }
       ];
+      // Días de la semana (getDay: 0=domingo..6=sábado), mostrados de lunes a domingo.
       var DIAS_SEMANA = [ {k:1,t:"Lun"},{k:2,t:"Mar"},{k:3,t:"Mié"},{k:4,t:"Jue"},{k:5,t:"Vie"},{k:6,t:"Sáb"},{k:0,t:"Dom"} ];
       function momentoDef(k){ for(var i=0;i<MOMENTOS.length;i++){ if(MOMENTOS[i].k===k) return MOMENTOS[i]; } return null; }
       function momentoOrden(k){ for(var i=0;i<MOMENTOS.length;i++){ if(MOMENTOS[i].k===k) return i; } return 99; }
       function momentoLabel(k){ var d=momentoDef(k); return d?d.t:(k||""); }
       function horaValida(h){ return /^\d{2}:\d{2}$/.test(String(h||"")); }
       function minutosDe(hhmm){ var p=String(hhmm||"").split(":"); return (Number(p[0])||0)*60+(Number(p[1])||0); }
+      // Hora de referencia de una toma: su hora exacta si la tiene, si no la del momento.
       function tomaHoraRef(toma){ if(horaValida(toma&&toma.hora)) return toma.hora; var d=momentoDef(toma&&toma.momento); return d?d.h:"12:00"; }
       function nuevaToma(){ return { momento:"desayuno", hora:"", cantidad:1, diasTipo:"todos", diasSemana:[1,2,3,4,5,6,0], cadaN:1, inicio:todayISO(), finTipo:"indefinido", finFecha:"", finDias:0, nota:"" }; }
       function planDe(ins){ return (ins && Array.isArray(ins.plan)) ? ins.plan : []; }
       function clonarPlan(plan){ try { return JSON.parse(JSON.stringify(plan||[])); } catch(e){ return []; } }
+      // Fecha de fin efectiva de una toma (ISO) o null si es indefinida.
       function tomaFinISO(toma){
         if(toma.finTipo==="hasta") return toma.finFecha||null;
         if(toma.finTipo==="porN"){ var n=Number(toma.finDias)||0; if(n<=0) return null; return addDaysISO(toma.inicio||todayISO(), n-1); }
         return null;
       }
+      // ¿La toma está vigente en la fecha dada? (dentro de su ventana inicio..fin)
       function tomaVigente(toma, iso){
         var ini = toma.inicio||todayISO();
         if (daysBetween(ini, iso) < 0) return false;
@@ -344,6 +329,7 @@
         if (fin && daysBetween(iso, fin) < 0) return false;
         return true;
       }
+      // ¿La toma aplica (toca) en la fecha dada según su pauta de días?
       function tomaAplicaDia(toma, iso){
         if(!tomaVigente(toma,iso)) return false;
         if(toma.diasTipo==="todos") return true;
@@ -351,12 +337,14 @@
         if(toma.diasTipo==="cadaN"){ var n=Number(toma.cadaN)||1; if(n<1) n=1; var diff=daysBetween(toma.inicio||iso, iso); return diff>=0 && (diff % n)===0; }
         return false;
       }
+      // Fracción de días en que la toma aplica (para promediar el consumo diario).
       function tomaFactorDiario(toma){
         if(toma.diasTipo==="todos") return 1;
         if(toma.diasTipo==="semana") return (toma.diasSemana||[]).length/7;
         if(toma.diasTipo==="cadaN"){ var n=Number(toma.cadaN)||1; if(n<1) n=1; return 1/n; }
         return 0;
       }
+      // Consumo diario promedio derivado del plan (solo tomas vigentes hoy).
       function consumoDiarioDesdePlan(plan, iso){
         iso = iso||todayISO();
         var tot=0;
@@ -364,6 +352,7 @@
         if(!isFinite(tot)||tot<0) tot=0;
         return tot;
       }
+      // Resumen corto de una toma para listados.
       function resumenToma(toma, unidad){
         var dias = toma.diasTipo==="todos" ? "todos los días"
           : (toma.diasTipo==="semana" ? DIAS_SEMANA.filter(function(d){ return (toma.diasSemana||[]).indexOf(d.k)>=0; }).map(function(d){ return d.t; }).join(" ")
@@ -371,6 +360,8 @@
         var hr = horaValida(toma.hora) ? (" ("+toma.hora+")") : "";
         return num2(Number(toma.cantidad)||0)+" "+(unidad||"u")+" · "+momentoLabel(toma.momento)+hr+" · "+dias;
       }
+
+      // ---------- Form helpers ----------
       function campo(labelText, inputNode){
         return el("div", { class:"mb-3" }, [
           el("label", { class:"form-label" }, [ labelText ]),
@@ -414,12 +405,14 @@
         return Number(n.value) || 0;
       }
       function readVal(id){ var n = byId(id); return n ? n.value : ""; }
+
+      // ---------- Tabla de datos ----------
       function mountTable(container, columns, data, alClicFila, opts){
         opts = opts || {};
-        var t = document.createElement("table-date");
+        var t = document.createElement("data-table");
         t.setAttribute("sortable", "");
         t.setAttribute("filterable", "");
-        t.setAttribute("paginated", "");
+        t.setAttribute("paginate", "");
         t.setAttribute("page-size", String(opts.pageSize || 15));
         if (opts.exportable !== false) t.setAttribute("exportable", "");
         container.appendChild(t);
@@ -432,6 +425,8 @@
         });
         return t;
       }
+
+      // ================= CONFIGURACIÓN (maestros CRUD por pestañas) =================
       function viewConfiguracion(c){
         if (CONFIG_TABS.indexOf(APP.configTab) < 0) APP.configTab = "Categorías";
         h(c, "⚙️ Configuración");
@@ -454,11 +449,14 @@
           default: viewCategorias(pane);
         }
       }
+
+      // ================= CATEGORÍAS =================
       function viewCategorias(c){
         var btn = el("button", { class:"btn btn-primary", type:"button" }, [ "+ Nueva categoría" ]);
         btn.disabled = readOnly();
         btn.addEventListener("click", function(){ formCategoria(null); });
         h(c, "Categorías", btn);
+
         var rows = get("Categoria").map(function(x){
           return { id:x.id, Nombre:x.nombre, Naturaleza:x.naturaleza, Descripción:x.descripcion||"", Activa: x.activa===false?"No":"Sí" };
         }).sort(function(a,b){ return (a.Naturaleza+a.Nombre).localeCompare(b.Naturaleza+b.Nombre); });
@@ -501,6 +499,8 @@
         frm.appendChild(acciones);
         c.appendChild(frm);
       }
+
+      // ================= INSUMOS =================
       function viewInsumos(c){
         var btn = el("button",{class:"btn btn-primary",type:"button"},["+ Nuevo insumo"]);
         btn.disabled = readOnly();
@@ -590,8 +590,6 @@
         frm.appendChild(planCol);
         frm.appendChild(colf(campo("Stock mínimo (días)", inputNumero("insMinDias", ins?ins.stockMinimoDias:0, {min:0, allowNegatives:false, decimals:0}))));
         frm.appendChild(colf(campo("Compro cada (días)", inputNumero("insDiasCompra", ins?ins.diasCompra:0, {min:0, allowNegatives:false, decimals:0}))));
-        frm.appendChild(colf(campo("Unidades por presentación", inputNumero("insPresUnid", ins?ins.unidadesPorPresentacion:0, {min:0, allowNegatives:false, decimals:0}))));
-        frm.appendChild(colf(campo("Nombre de la presentación (singular)", inputText("insPresNombre", ins?(ins.nombrePresentacion||""):"", {placeholder:"Ej.: caja, blíster, frasco"}))));
         frm.appendChild(colf(campo("Fecha último inventario", inputFecha("insFecha", ins?ins.fechaUltimoInventario:todayISO()))));
         var aliasCol = el("div",{class:"col-12 col-md-8"});
         aliasCol.appendChild(campo("Otros nombres / marcas (separados por coma)", inputText("insAlias", (ins?aliasList(ins).join(", "):""), {placeholder:"Ej.: Aceite Marca X, Aceite 1L"})));
@@ -636,6 +634,7 @@
         });
         setMetodoVis();
         updateConsumoReadout();
+        // ----- Editor del plan de consumo -----
         var planTomas = planIni;
         function updatePlanReadout(){
           var ro = byId("planReadout"); if(!ro) return;
@@ -781,7 +780,6 @@
             existencia:readNumero("insExist"), consumoDiario:consDiario, consumoMetodo:consMetodo, consumoValor:consValor, consumoDiasUnidad:consDiasU,
             llevaPlan:llevaPlan, plan:planGuardar,
             stockMinimoDias:readNumero("insMinDias"), diasCompra:readNumero("insDiasCompra"),
-            unidadesPorPresentacion:readNumero("insPresUnid"), nombrePresentacion:readVal("insPresNombre").trim(),
             fechaUltimoInventario:readVal("insFecha"),
             alias: readVal("insAlias").split(",").map(function(s){ return s.trim(); }).filter(Boolean),
             esGeneral: !!(byId("insGeneral") && byId("insGeneral").checked) };
@@ -804,6 +802,8 @@
         }
         c.appendChild(acciones);
       }
+
+      // ================= DETALLE DE INSUMO =================
       function viewDetalleInsumo(c){
         var ins = findById("Insumo", APP.detalleInsumoId);
         if(!ins){ APP.detalleInsumoId=null; viewInsumos(c); return; }
@@ -814,6 +814,7 @@
         editar.addEventListener("click", function(){ formInsumo(ins); });
         var acc = el("div",{class:"d-flex"}, [volver, editar]);
         h(c, ins.nombre, acc);
+
         var cc = calcInsumo(ins);
         var cards = el("div",{class:"row g-3 mb-3"});
         function card(titulo, valor, sub){
@@ -834,11 +835,12 @@
         cards.appendChild(card("último proveedor", ins.ultimoProveedor||"—"));
         cards.appendChild(card("Stock mínimo (días)", num2(ins.stockMinimoDias)));
         cards.appendChild(card("Compro cada (días)", num2(ins.diasCompra)));
-        cards.appendChild(card("Presentación", presUnid(ins)>0 ? (num2(presUnid(ins))+" "+(ins.unidad||"u")+" / "+(ins.nombrePresentacion||"—")) : "—"));
-        cards.appendChild(card("Cantidad sugerida a comprar", cc.cantidadSugerida>0 ? textoCompra(ins, cc.cantidadSugerida) : "0"));
+        cards.appendChild(card("Cantidad sugerida a comprar", num2(cc.cantidadSugerida)));
         cards.appendChild(card("último inventario", ins.fechaUltimoInventario||"—"));
         c.appendChild(cards);
         if (enAlerta(ins)) c.appendChild(el("div",{class:"alert alert-warning"},["⚠ Los días de existencia proyectada están por debajo del stock mínimo en días."]));
+
+        // Plan de consumo
         if (ins.llevaPlan && (ins.plan||[]).length){
           c.appendChild(el("h2",{class:"h5 mt-3"},["Plan de consumo"]));
           c.appendChild(el("p",{class:"text-small text-muted"},["El consumo diario de este insumo se calcula autom\u00e1ticamente a partir de las tomas programadas."]));
@@ -846,6 +848,7 @@
           (ins.plan||[]).forEach(function(t){ ul.appendChild(el("li",{class:"text-small"},[resumenToma(t, ins.unidad)])); });
           c.appendChild(ul);
         }
+
         c.appendChild(el("h2",{class:"h5 mt-3"},["Historial de compras"]));
         var lineas = get("LineaFactura").filter(function(l){ return l.tipo==="Insumo" && l.refId===ins.id; });
         var facturasById = {}; get("Factura").forEach(function(f){ facturasById[f.id]=f; });
@@ -858,10 +861,12 @@
         var cols = [ {key:"Fecha",label:"Fecha"},{key:"Proveedor",label:"Proveedor"},{key:"Cantidad",label:"Cantidad"},{key:"CostoUnitUSD",label:"Costo unit. USD"},{key:"TotalUSD",label:"Total USD"} ];
         mountTable(c, cols, rows, null);
       }
+
+      // ================= PLAN DE CONSUMO (SEMANAL) =================
       function lunesDeSemana(iso){
         var d = parseLocal(iso) || new Date();
-        var dow = d.getDay();
-        var diff = (dow===0) ? -6 : (1 - dow);
+        var dow = d.getDay(); // 0=dom..6=sab
+        var diff = (dow===0) ? -6 : (1 - dow); // retroceder al lunes
         return addDaysISO(iso, diff);
       }
       function viewPlanSemanal(c){
@@ -870,7 +875,9 @@
         var lunesBase = lunesDeSemana(hoy);
         var lunes = addDaysISO(lunesBase, APP.planWeekOffset*7);
         var domingo = addDaysISO(lunes, 6);
+        // Insumos con plan
         var insumos = get("Insumo").filter(function(x){ return x.llevaPlan && planDe(x).length; });
+        // Controles de navegación
         var nav = el("div",{class:"btn-group"});
         var bPrev = el("button",{class:"btn btn-outline-secondary btn-sm",type:"button"},["← Semana anterior"]);
         bPrev.addEventListener("click", function(){ APP.planWeekOffset -= 1; render(); });
@@ -882,6 +889,7 @@
         h(c, "Plan de Consumo", nav);
         c.appendChild(el("p",{class:"text-small text-muted"},["Semana del "+lunes+" al "+domingo+". Vista informativa de las tomas programadas de tus insumos con plan."]));
         if(!insumos.length){ c.appendChild(el("div",{class:"alert alert-info"},["A\u00fan no hay insumos con un plan de consumo. Activa un plan al editar un insumo (p. ej. medicinas)."])); return; }
+        // Determinar los momentos que aparecen en la semana
         var usados = {};
         var dias = [];
         for(var i=0;i<7;i++){ dias.push(addDaysISO(lunes, i)); }
@@ -892,6 +900,7 @@
         });
         var momentosLista = MOMENTOS.filter(function(m){ return usados[m.k]; });
         if(!momentosLista.length){ c.appendChild(el("div",{class:"alert alert-info"},["No hay tomas programadas en esta semana."])); return; }
+        // Tabla rejilla momentos x días
         var wrap = el("div",{class:"table-responsive"});
         var tbl = el("table",{class:"table table-bordered align-middle text-small"});
         var thead = el("thead");
@@ -936,6 +945,8 @@
         });
         tbl.appendChild(tbody); wrap.appendChild(tbl); c.appendChild(wrap);
       }
+
+      // ================= SERVICIOS =================
       function catOptionsServicio(){
         var opts = get("Categoria").filter(function(x){ return x.naturaleza==="Servicio" && x.activa!==false; })
           .map(function(x){ return { value:x.id, label:x.nombre }; });
@@ -992,6 +1003,8 @@
         }
         c.appendChild(acciones);
       }
+
+      // ================= PROVEEDORES =================
       function viewProveedores(c){
         var btn = el("button",{class:"btn btn-primary",type:"button"},["+ Nuevo proveedor"]);
         btn.disabled = readOnly();
@@ -1041,6 +1054,8 @@
         }
         c.appendChild(acciones);
       }
+
+      // ================= FACTURA (registrar compra/servicio) =================
       function nuevaLinea(){ return { refId:"", nuevoNombre:"", unidad:"", cantidad:1, montoOriginal:0, descOriginal:"", recordarAlias:false }; }
       function initFacturaDraft(){
         APP.facturaDraft = { fecha:todayISO(), proveedor:"", naturaleza:"Insumo", moneda:"Bs",
@@ -1080,18 +1095,24 @@
         var wrap = el("div", { id:"facturaWrap" });
         c.appendChild(wrap);
         renderFactura();
+        // Al entrar, establecer la tasa para la fecha/moneda actuales si aún no se ha obtenido
+        // (USD = 1; Bs/EUR = tasa oficial). El usuario siempre puede modificarla luego.
         var d = APP.facturaDraft;
         if (!d.tasaDolar && !d.tasaMsg) recargarTasa();
       }
+
+      // Normaliza un nombre para comparar (minúsculas, sin tildes, espacios colapsados).
       function normNombre(s){
         s = String(s==null?"":s).toLowerCase().trim();
         try { s = s.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); } catch(e){}
         return s.replace(/\s+/g," ");
       }
+      // Lista de alias (otros nombres/marcas) de un insumo, saneada.
       function aliasList(ins){
         if (!ins || !Array.isArray(ins.alias)) return [];
         return ins.alias.map(function(a){ return String(a||"").trim(); }).filter(Boolean);
       }
+      // Busca un insumo por su nombre canónico o por cualquiera de sus alias.
       function buscarInsumoPorNombre(txt){
         var n = normNombre(txt); if (!n) return null;
         var lista = get("Insumo"), i, ins, al, j;
@@ -1099,6 +1120,7 @@
         for (i=0;i<lista.length;i++){ ins=lista[i]; al=aliasList(ins); for(j=0;j<al.length;j++){ if(normNombre(al[j])===n) return ins; } }
         return null;
       }
+      // Busca un servicio por su nombre canónico.
       function buscarServicioPorNombre(txt){
         var n = normNombre(txt); if (!n) return null;
         var lista = get("Servicio"), i;
@@ -1119,10 +1141,12 @@
       function sumaOriginales(){
         return APP.facturaDraft.lineas.reduce(function(s,l){ return s + (Number(l.montoOriginal)||0); }, 0);
       }
+      // Ajuste neto = (monto total de la factura) - (suma de los montos de los ítems).
       function recomputarAjuste(){
         var d = APP.facturaDraft;
         d.ajusteNeto = (Number(d.montoTotalFactura)||0) - sumaOriginales();
       }
+      // Ajuste prorrateado para una línea (0 si el prorrateo está desactivado).
       function ajusteLineaDe(l){
         var d = APP.facturaDraft;
         if (!d.prorratear) return 0;
@@ -1142,20 +1166,27 @@
         var wrap = byId("facturaWrap"); if(!wrap) return; clear(wrap);
         var d = APP.facturaDraft;
         if (readOnly()){ wrap.appendChild(el("div",{class:"alert alert-info"},["Modo solo lectura: no puedes registrar facturas."])); return; }
+
+        // ---- 1. Modo de ingreso (tres botones) + panel de ayuda ----
         renderModoFactura(wrap);
         if (d.modo==="IA") renderModoIA(wrap);
-        else if (d.modo==="OCR") renderModoOCR(wrap);
+
+        // ---- 2. Ítems (lo más importante) ----
         renderLineasFactura(wrap);
+        // ---- 3. Monto total y ajuste (+ prorrateo) ----
         renderAjustesFactura(wrap);
+        // ---- 4. Datos básicos de la factura ----
         renderDatosBasicos(wrap);
+        // ---- 5. Totales + guardar ----
         renderTotalesYGuardar(wrap);
       }
+      // Botonera de modo de ingreso: Manual (por defecto) y Asistido por IA.
       function renderModoFactura(wrap){
         var d = APP.facturaDraft;
         var box = el("div",{class:"mb-3"});
         box.appendChild(el("label",{class:"form-label fw-semibold d-block mb-1"},["Modo de ingreso"]));
         var grp = el("div",{class:"btn-group flex-wrap",role:"group"});
-        var modos = [ {v:"Manual",t:"Manual"}, {v:"IA",t:"Asistido por IA"}, {v:"OCR",t:"Asistido OCR"} ];
+        var modos = [ {v:"Manual",t:"Manual"}, {v:"IA",t:"Asistido por IA"} ];
         modos.forEach(function(m){
           var b = el("button",{type:"button",class:"btn "+(d.modo===m.v?"btn-primary":"btn-outline-primary")},[m.t]);
           b.addEventListener("click", function(){ if(d.modo!==m.v){ d.modo=m.v; renderFactura(); } });
@@ -1164,6 +1195,7 @@
         box.appendChild(grp);
         wrap.appendChild(box);
       }
+      // Datos básicos (al final): fecha, proveedor, naturaleza, moneda y tasa de cambio.
       function renderDatosBasicos(wrap){
         var d = APP.facturaDraft;
         function colf(w,node){ var dd=el("div",{class:"col-12 col-md-"+w}); dd.appendChild(node); return dd; }
@@ -1206,6 +1238,8 @@
       function recargarTasa(){
         obtenerTasasFactura(function(){ renderFactura(); });
       }
+
+      // Normaliza la moneda que devuelva la IA a Bs / USD / EUR (acepta sinónimos).
       function normalizarMoneda(m){
         var s = String(m||"").trim().toLowerCase();
         if (!s) return null;
@@ -1214,6 +1248,7 @@
         if (s==="eur"||s==="\u20ac"||s.indexOf("eur")===0) return "EUR";
         return null;
       }
+      // Normaliza la fecha a AAAA-MM-DD (acepta DD/MM/AAAA y AAAA/MM/DD).
       function normalizarFecha(s){
         s = String(s||"").trim();
         if (!s) return null;
@@ -1232,11 +1267,14 @@
         var reconocidas = 0;
         var nuevas = arr.map(function(it){
           var l = nuevaLinea();
+          // Descripci\u00f3n original tal como aparece en la factura (la conserva la IA).
           l.descOriginal = String(it.descripcion || it.descripcionOriginal || it.nombre || it.concepto || "").trim();
+          // Nombre can\u00f3nico sugerido por la IA (nombre del cat\u00e1logo) o vac\u00edo si no lo reconoci\u00f3.
           var canon = String((esInsumo ? (it.insumo!=null?it.insumo:it.insumoReconocido) : (it.servicio!=null?it.servicio:it.servicioReconocido)) || "").trim();
           l.unidad = String(it.unidad || "").trim();
           l.cantidad = Number(it.cantidad || it.cant || 1) || 1;
           l.montoOriginal = Number(it.montoOriginal != null ? it.montoOriginal : (it.monto != null ? it.monto : (it.total != null ? it.total : 0))) || 0;
+          // Intentar emparejar con un \u00edtem existente (por nombre can\u00f3nico o alias; luego por la descripci\u00f3n original).
           var ref = null;
           if (esInsumo) ref = buscarInsumoPorNombre(canon) || buscarInsumoPorNombre(l.descOriginal);
           else ref = buscarServicioPorNombre(canon) || buscarServicioPorNombre(l.descOriginal);
@@ -1246,8 +1284,11 @@
         });
         d.lineas = nuevas.length ? nuevas : [ nuevaLinea() ];
         var detalles = [];
+        // Proveedor
         if (meta.proveedor){ var pv=String(meta.proveedor).trim(); if(pv){ d.proveedor=pv; detalles.push("proveedor"); } }
+        // Fecha
         if (meta.fecha){ var fx=normalizarFecha(meta.fecha); if(fx){ d.fecha=fx; detalles.push("fecha"); } }
+        // Moneda
         var monCambio=false;
         if (meta.moneda){ var mn=normalizarMoneda(meta.moneda); if(mn && mn!==d.moneda){ d.moneda=mn; monCambio=true; detalles.push("moneda"); } }
         var huboTotal = (total != null && !isNaN(Number(total)));
@@ -1260,10 +1301,12 @@
         flash("Se cargaron "+nuevas.length+" l\u00ednea(s)."+recMsg+pendMsg+" Rev\u00edsalas."+extra,"success");
         if (monCambio) recargarTasa(); else renderFactura();
       }
+      // Prompt que el usuario copia y entrega a su IA junto con el archivo de la factura.
       function promptFacturaIA(){
         var d = APP.facturaDraft || {};
         var esInsumo = d.naturaleza!=="Servicio";
         var ent = esInsumo ? "Insumo" : "Servicio";
+        // Cat\u00e1logo LIGERO: solo nombre + unidad (+ otros nombres/alias) de lo ya registrado.
         var catLines = get(ent).slice().sort(function(a,b){ return String(a.nombre||"").localeCompare(String(b.nombre||"")); })
           .map(function(x){
             if (esInsumo){
@@ -1318,6 +1361,7 @@
         );
         return out.join("\n");
       }
+      // Intenta copiar al portapapeles (API moderna y, si falla, execCommand).
       function copiarAlPortapapeles(texto){
         function ok(){ flash("Instrucciones copiadas al portapapeles. P\u00e9galas en tu IA junto con la factura.","success"); }
         function fallo(){ flash("No se pudo copiar autom\u00e1ticamente en este espacio. Av\u00edsame y vemos otra forma.","warning"); }
@@ -1373,28 +1417,6 @@
         box.appendChild(btn);
         wrap.appendChild(box);
       }
-      function renderModoOCR(wrap){
-        var box = el("div",{class:"border rounded p-3 mt-2 bg-light"});
-        box.appendChild(el("p",{class:"text-small mb-2"},["Sube una foto o PDF de la factura para extraer las líneas automáticamente. Revisa siempre el resultado antes de guardar."]));
-        var lf;
-        try { lf = document.createElement("leer-factura"); } catch(e){ lf = null; }
-        if (lf && (customElements && customElements.get && customElements.get("leer-factura"))){
-          var manejarResultadoOCR = function(ev){
-            var det = ev && ev.detail ? ev.detail : {};
-            var arr = det.lineas || det.items || det.rows || det.result || det.data || (Array.isArray(det)?det:null);
-            if (!arr && det && det.factura) arr = det.factura.lineas;
-            var total = det.total != null ? det.total : (det.montoTotal != null ? det.montoTotal : (det.totalFactura != null ? det.totalFactura : (det.factura && det.factura.total != null ? det.factura.total : null)));
-            if (Array.isArray(arr)) aplicarLineasDesdeDatos(arr, total);
-            else flash("La factura se leyó pero no se reconocieron líneas; complétalas manualmente abajo.","warning");
-          };
-          ["result","change","read","factura","done","complete"].forEach(function(evt){ lf.addEventListener(evt, manejarResultadoOCR); });
-          lf.addEventListener("error", function(ev){ showError((ev&&ev.detail)||"Error al leer la factura."); });
-          box.appendChild(lf);
-        } else {
-          box.appendChild(el("div",{class:"alert alert-warning mb-0"},["El lector de facturas no está disponible en este espacio. Usa el modo IA o Manual."]));
-        }
-        wrap.appendChild(box);
-      }
       function renderLineasFactura(wrap){
         var d = APP.facturaDraft;
         var sec = el("div",{class:"mt-3"});
@@ -1410,10 +1432,12 @@
         var tb = el("tbody");
         d.lineas.forEach(function(l, i){
           var tr = el("tr");
+          // ref
           var tdRef = el("td");
           var sel = selectField("facLnRef"+i, refOptions(d.naturaleza), l.refId||"");
           sel.addEventListener("change", function(){ l.refId = readVal("facLnRef"+i); if(l.refId!=="__nuevo__") l.nuevoNombre=""; l.recordarAlias=false; renderFactura(); });
           tdRef.appendChild(sel);
+          // Descripci\u00f3n original tal como vino en la factura (ayuda a confirmar el emparejamiento).
           if (l.descOriginal){
             tdRef.appendChild(el("div",{class:"text-small text-muted mt-1"},["Factura: \u201c"+l.descOriginal+"\u201d"]));
           }
@@ -1429,6 +1453,8 @@
               tdRef.appendChild(inU);
             }
           } else if (d.naturaleza==="Insumo" && l.refId && l.descOriginal){
+            // Ofrecer recordar la descripci\u00f3n de la factura como "otro nombre" (alias) del insumo elegido,
+            // s\u00f3lo si a\u00fan no coincide con su nombre o un alias existente.
             var insSel = findById("Insumo", l.refId);
             var yaConocido = insSel && (normNombre(insSel.nombre)===normNombre(l.descOriginal) ||
               aliasList(insSel).some(function(a){ return normNombre(a)===normNombre(l.descOriginal); }));
@@ -1443,14 +1469,18 @@
             }
           }
           tr.appendChild(tdRef);
+          // cantidad
           var tdC = el("td"); var inC = inputNumero("facLnCant"+i, l.cantidad, {min:0, decimals:4, allowNegatives:false});
           inC.addEventListener("change", function(){ l.cantidad=readNumero("facLnCant"+i); updateNetosFactura(); });
           tdC.appendChild(inC); tr.appendChild(tdC);
+          // monto del ítem
           var tdMo = el("td"); var inMo = inputNumero("facLnMo"+i, l.montoOriginal, {min:0, decimals:2, allowNegatives:false});
           inMo.addEventListener("change", function(){ l.montoOriginal=readNumero("facLnMo"+i); recomputarAjuste(); sincronizarAjusteInput(); updateNetosFactura(); });
           tdMo.appendChild(inMo); tr.appendChild(tdMo);
+          // neto (monto + ajuste prorrateado)
           var tdSub = el("td",{id:"facLnSub"+i, class:"text-end fw-semibold"}, [ money(netoLinea(l)) ]);
           tr.appendChild(tdSub);
+          // remove
           var tdX = el("td");
           var bx = el("button",{class:"btn btn-sm btn-outline-danger",type:"button",title:"Quitar"},["✕"]);
           bx.addEventListener("click", function(){ d.lineas.splice(i,1); if(!d.lineas.length) d.lineas.push(nuevaLinea()); renderFactura(); });
@@ -1469,11 +1499,14 @@
         d.lineas.forEach(function(l,i){ var td=byId("facLnSub"+i); if(td){ clear(td); td.appendChild(document.createTextNode(money(netoLinea(l)))); } });
         updateTotalesFactura();
       }
+      // Refresca el valor mostrado del campo "Ajuste neto" sin reconstruir el formulario.
+      // (Reconstruirlo dispararía el change del <input-numero> al montarse y causaría recursión.)
       function sincronizarAjusteInput(){
         var d = APP.facturaDraft;
         var inAj = byId("facAjuste");
         if (inAj) inAj.setAttribute("value", String(Number(d.ajusteNeto)||0));
       }
+
       function renderAjustesFactura(wrap){
         var d = APP.facturaDraft;
         var sec = el("div",{class:"border rounded p-3 mt-3"});
@@ -1527,6 +1560,7 @@
         box.appendChild(row);
         if (tasaNeeded(d.moneda) && !d.tasaDolar) box.appendChild(el("div",{class:"text-small text-danger mt-1"},["Ingresa la tasa para calcular el equivalente en USD."]));
       }
+
       function idOf(res){ if(res==null) return null; if(typeof res==="object") return res.id||res._id||res.docId||null; return res; }
       function ensureProveedor(nombre){
         nombre = (nombre||"").trim();
@@ -1543,7 +1577,7 @@
           var l = lineas[i++];
           if (l.refId!=="__nuevo__") return next();
           var base = { nombre:(l.nuevoNombre||"").trim(), categoria:"", descripcion:"", ultimoProveedor:"", ultimoCostoUSD:0 };
-          if (ent==="Insumo"){ base.unidad=l.unidad||""; base.existencia=0; base.consumoDiario=0; base.consumoMetodo="directo"; base.consumoValor=0; base.consumoDiasUnidad=0; base.stockMinimoDias=0; base.diasCompra=0; base.unidadesPorPresentacion=0; base.nombrePresentacion=""; base.ultCompraCostoUSD=0; base.ultCompraCantidad=0; base.fechaUltimoInventario=APP.facturaDraft.fecha; base.alias=[]; base.esGeneral=false; base.llevaPlan=false; base.plan=[]; }
+          if (ent==="Insumo"){ base.unidad=l.unidad||""; base.existencia=0; base.consumoDiario=0; base.consumoMetodo="directo"; base.consumoValor=0; base.consumoDiasUnidad=0; base.stockMinimoDias=0; base.diasCompra=0; base.ultCompraCostoUSD=0; base.ultCompraCantidad=0; base.fechaUltimoInventario=APP.facturaDraft.fecha; base.alias=[]; base.esGeneral=false; base.llevaPlan=false; base.plan=[]; }
           return sdAdd(ent, base).then(function(res){ l.refId = idOf(res); return next(); });
         }
         return next();
@@ -1570,6 +1604,7 @@
                   ultCompraCostoUSD: finalUSD,
                   ultCompraCantidad: cant
                 };
+                // Aprendizaje de alias: recordar el nombre de la factura como otro nombre del insumo.
                 if (l.recordarAlias && l.descOriginal){
                   var al = aliasList(ins);
                   var yaEsta = normNombre(ins.nombre)===normNombre(l.descOriginal) ||
@@ -1621,6 +1656,9 @@
           })
           .catch(function(e){ saveBtn.disabled=false; showError(e); });
       }
+
+      // ================= TABLERO =================
+      // ---------- Recordatorio informativo (a solicitud, en modal) ----------
       function tomasDeHoy(insumos){
         var hoy = todayISO();
         var arr = [];
@@ -1681,6 +1719,7 @@
         });
         mostrarModal("⏰ Recordatorio de hoy", body, "Informativo: no marca tomas ni descuenta existencias.");
       }
+
       function viewTablero(c){
         h(c, "Tablero");
         var insumos = get("Insumo");
@@ -1689,6 +1728,7 @@
         var mesAct = monthKey(todayISO());
         var factMes = get("Factura").filter(function(f){ return monthKey(f.fecha)===mesAct; });
         var gastoMesUSD = factMes.reduce(function(s,f){ return s + (Number(f.totalFinalUSD)||0); }, 0);
+
         var cards = el("div",{class:"row g-3 mb-3"});
         function metric(titulo, valor, cls){
           var d = el("div",{class:"col-6 col-md-3"});
@@ -1703,6 +1743,8 @@
         cards.appendChild(metric("Costo mensual estimado", money(costoMes)));
         cards.appendChild(metric("Gasto del mes (facturas)", money(gastoMesUSD)));
         c.appendChild(cards);
+
+        // Recordatorio informativo del día (a solicitud, en modal)
         (function(){
           var tomas = tomasDeHoy(insumos);
           var btnRec = el("button",{class:"btn btn-outline-primary mb-3",type:"button"},["⏰ Ver recordatorio de hoy"+(tomas.length?(" ("+tomas.length+")"):"")]);
@@ -1710,11 +1752,15 @@
           btnRec.addEventListener("click", function(){ abrirRecordatorioModal(insumos); });
           c.appendChild(btnRec);
         })();
+
         if (!APP.tableroFiltro) APP.tableroFiltro = "alerta";
-        var pendientes = insumos.filter(function(x){ return calcInsumo(x).enReorden; });
+        var pendientes = insumos.filter(function(x){ return calcInsumo(x).cantidadSugerida > 0; });
+
         c.appendChild(el("h2",{class:"h5"},["Insumos"]));
+
         var MESES = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
         function fmtCorta(iso){ if(!iso) return "—"; var dd=parseLocal(iso); if(!dd||isNaN(dd.getTime())) return iso; return (dd.getDate()<10?"0":"")+dd.getDate()+" "+MESES[dd.getMonth()]; }
+
         var filtDef = [
           {v:"alerta", t:"En Alerta", n:enAlertas.length},
           {v:"pendiente", t:"Pendiente por Comprar", n:pendientes.length},
@@ -1731,11 +1777,13 @@
           radios.appendChild(wrap);
         });
         c.appendChild(radios);
+
         var lista = APP.tableroFiltro==="alerta" ? enAlertas : (APP.tableroFiltro==="pendiente" ? pendientes : insumos);
         if (!lista.length){
           c.appendChild(el("p",{class:"text-muted"},[ APP.tableroFiltro==="alerta" ? "No hay insumos en alerta. ✔" : (APP.tableroFiltro==="pendiente" ? "No hay insumos pendientes por comprar. ✔" : "Aún no hay insumos.") ]));
           return;
         }
+
         var datos = lista.map(function(x){
           var cc = calcInsumo(x);
           var cd = Number(x.consumoDiario)||0;
@@ -1748,12 +1796,14 @@
         var maxDias = 0;
         datos.forEach(function(r){ if(r.dias!=null && r.dias>maxDias) maxDias=r.dias; });
         if (maxDias<=0) maxDias=1;
+
         datos.forEach(function(r){
           var cont = el("div",{class:"mb-3"});
           var fila = el("div",{class:"d-flex align-items-center gap-2"});
           var nombre = el("button",{class:"btn btn-link p-0 text-start text-truncate",type:"button",style:"width:150px;flex:0 0 150px"},[r.ins.nombre||"(sin nombre)"]);
           nombre.addEventListener("click", function(){ APP.detalleInsumoId=r.ins.id; render(); });
           fila.appendChild(nombre);
+
           var barWrap = el("div",{class:"flex-grow-1"});
           var track = el("div",{style:"display:flex;width:100%;height:18px;background:#f1f3f5;border-radius:4px;overflow:hidden"});
           var seg = function(cls, dcnt){ if(dcnt<=0) return; var w=(dcnt/maxDias*100); track.appendChild(el("div",{class:cls,style:"width:"+w+"%;height:18px"},[])); };
@@ -1761,75 +1811,51 @@
             track.appendChild(el("div",{class:"bg-success",style:"width:100%;height:18px"},[]));
           } else {
             var redD = Math.min(r.dias, r.stockMin);
-            var grnD = Math.min(Math.max(0, r.dias - r.stockMin), r.ciclo);
-            var yelD = Math.max(0, r.dias - r.stockMin - r.ciclo);
+            var yelD = Math.min(Math.max(0, r.dias - r.stockMin), r.ciclo);
+            var grnD = Math.max(0, r.dias - r.stockMin - r.ciclo);
             seg("bg-danger", redD);
-            seg("bg-success", grnD);
             seg("bg-warning", yelD);
+            seg("bg-success", grnD);
           }
           barWrap.appendChild(track);
+
           var partes = [];
           partes.push((r.dias==null ? "∞" : num2(r.dias)) + " días restantes");
           if (r.dias!=null && r.cc.fechaAgote) partes.push("se agota ~ "+fmtCorta(r.cc.fechaAgote));
-          if (r.cc.cantidadSugerida > 0) partes.push("comprar "+textoCompra(r.ins, r.cc.cantidadSugerida));
+          if (r.cc.cantidadSugerida > 0) partes.push("comprar "+num2(r.cc.cantidadSugerida)+" "+(r.ins.unidad||"u"));
           barWrap.appendChild(el("div",{class:"text-small text-muted mt-1"},[partes.join(" · ")]));
+
           fila.appendChild(barWrap);
           cont.appendChild(fila);
           c.appendChild(cont);
         });
       }
+
+      // ================= LISTA DE COMPRAS =================
       function viewListaCompras(c){
         var insumos = get("Insumo");
-        if (APP.listaCompras == null){ APP.listaCompras = { qty:null, solo:false, diasAdic:0, especial:false, fechaCierre:todayISO(), diasCierre:0 }; }
+        if (APP.listaCompras == null){ APP.listaCompras = { qty:null, solo:false, diasAdic:0 }; }
         var estado = APP.listaCompras;
-        function diasACubrirEspecial(){
-          var n = Math.max(0, Number(estado.diasCierre)||0);
-          var extra = estado.fechaCierre ? Math.max(0, daysBetween(todayISO(), estado.fechaCierre)) : 0;
-          return extra + n;
-        }
         function sugerida(ins){
           var cc = calcInsumo(ins);
           var cd = Number(ins.consumoDiario)||0;
-          var min = Number(ins.stockMinimoDias)||0;
-          var diasObjetivo = estado.especial
-            ? (diasACubrirEspecial() + min)
-            : ((Number(ins.diasCompra)||0) + min + (Number(estado.diasAdic)||0));
-          var objetivo = cd * diasObjetivo;
+          var objetivo = cd * ((Number(ins.diasCompra)||0) + (Number(ins.stockMinimoDias)||0) + (Number(estado.diasAdic)||0));
           var s = Math.max(0, Math.ceil(objetivo - cc.existenciaProyectada));
-          if (!isFinite(s)) s = 0;
-          return redondearPresentacion(s, ins);
+          return isFinite(s) ? s : 0;
         }
-        function recomputar(){ estado.qty = {}; insumos.forEach(function(x){ estado.qty[x.id] = sugerida(x); }); }
-        if (estado.qty == null){ recomputar(); }
+        if (estado.qty == null){ estado.qty = {}; insumos.forEach(function(x){ estado.qty[x.id] = sugerida(x); }); }
+
         var acciones = el("div",{class:"d-flex align-items-center gap-3 flex-wrap no-print"});
-        var espWrap = el("div",{class:"form-check mb-0"});
-        var espChk = el("input",{class:"form-check-input",type:"checkbox",id:"lcEsp"});
-        espChk.checked = !!estado.especial;
-        espChk.addEventListener("change", function(){ estado.especial = espChk.checked; recomputar(); render(); });
-        espWrap.appendChild(espChk);
-        espWrap.appendChild(el("label",{class:"form-check-label","for":"lcEsp"},["Compra especial (no podré comprar por un tiempo)"]));
-        acciones.appendChild(espWrap);
-        if (estado.especial){
-          var fWrap = el("div",{class:"d-flex align-items-center gap-2"});
-          fWrap.appendChild(el("label",{class:"form-label mb-0","for":"lcFecha"},["No puedo comprar desde"]));
-          var fInp = el("input",{id:"lcFecha",type:"date",class:"form-control form-control-sm",style:"width:160px",value:estado.fechaCierre||todayISO()});
-          fInp.addEventListener("change", function(){ estado.fechaCierre = fInp.value||todayISO(); recomputar(); render(); });
-          fWrap.appendChild(fInp);
-          acciones.appendChild(fWrap);
-          var nWrap = el("div",{class:"d-flex align-items-center gap-2"});
-          nWrap.appendChild(el("label",{class:"form-label mb-0","for":"lcDiasCierre"},["durante (días)"]));
-          var nInp = el("input",{id:"lcDiasCierre",type:"number",min:"0",step:"1",class:"form-control form-control-sm",style:"width:90px",value:String(estado.diasCierre||0)});
-          nInp.addEventListener("change", function(){ estado.diasCierre = Math.max(0, Number(nInp.value)||0); recomputar(); render(); });
-          nWrap.appendChild(nInp);
-          acciones.appendChild(nWrap);
-        } else {
-          var adicWrap = el("div",{class:"d-flex align-items-center gap-2"});
-          adicWrap.appendChild(el("label",{class:"form-label mb-0","for":"lcAdic"},["Días adicionales"]));
-          var adicInp = el("input",{id:"lcAdic",type:"number",min:"0",step:"1",class:"form-control form-control-sm",style:"width:90px",value:String(estado.diasAdic||0)});
-          adicInp.addEventListener("change", function(){ estado.diasAdic = Math.max(0, Number(adicInp.value)||0); recomputar(); render(); });
-          adicWrap.appendChild(adicInp);
-          acciones.appendChild(adicWrap);
-        }
+        var adicWrap = el("div",{class:"d-flex align-items-center gap-2"});
+        adicWrap.appendChild(el("label",{class:"form-label mb-0","for":"lcAdic"},["Días adicionales"]));
+        var adicInp = el("input",{id:"lcAdic",type:"number",min:"0",step:"1",class:"form-control form-control-sm",style:"width:90px",value:String(estado.diasAdic||0)});
+        adicInp.addEventListener("change", function(){
+          estado.diasAdic = Math.max(0, Number(adicInp.value)||0);
+          estado.qty = {}; insumos.forEach(function(x){ estado.qty[x.id] = sugerida(x); });
+          render();
+        });
+        adicWrap.appendChild(adicInp);
+        acciones.appendChild(adicWrap);
         var chkWrap = el("div",{class:"form-check mb-0"});
         var chk = el("input",{class:"form-check-input",type:"checkbox",id:"lcSolo"});
         chk.checked = !!estado.solo;
@@ -1841,15 +1867,16 @@
         btnPrint.addEventListener("click", function(){ window.print(); });
         acciones.appendChild(btnPrint);
         h(c, "Lista de compras", acciones);
-        if (estado.especial){
-          c.appendChild(el("p",{class:"text-muted text-small no-print"},["Compra especial: se calcula cuánto comprar HOY para cubrir desde hoy hasta el final del cierre ("+num2(diasACubrirEspecial())+" días en total) más el stock mínimo, redondeado a la presentación. Nada de esto se guarda."]));
-        } else {
-          c.appendChild(el("p",{class:"text-muted text-small no-print"},["Propuesta calculada por la app. Usa 'Días adicionales' para sumar cobertura extra a todos los insumos. Las cantidades se redondean a la presentación de compra. Nada de esto se guarda."]));
-        }
+
+        c.appendChild(el("p",{class:"text-muted text-small no-print"},["Propuesta calculada por la app. Usa 'Días adicionales' para sumar cobertura extra a todos los insumos (recalcula toda la lista). Luego ajusta las cantidades a comprar según necesites (presentación de venta, compra adicional, etc.). Nada de esto se guarda."]));
+
         if (!insumos.length){ c.appendChild(el("p",{class:"text-muted"},["Aún no hay insumos."])); return; }
+
         var visibles = insumos.slice().sort(function(a,b){ return a.nombre.localeCompare(b.nombre); });
         if (estado.solo) visibles = visibles.filter(function(x){ return (Number(estado.qty[x.id])||0) > 0; });
+
         if (!visibles.length){ c.appendChild(el("p",{class:"text-muted"},["No hay insumos con cantidad a comprar."])); return; }
+
         function costoDe(ins, cant){ return (Number(cant)||0) * (Number(ins.ultimoCostoUSD)||0); }
         var totalCell = el("td",{class:"text-end fw-bold"},[money(0)]);
         function recalcTotal(){
@@ -1857,10 +1884,11 @@
           visibles.forEach(function(x){ t += costoDe(x, estado.qty[x.id]); });
           totalCell.textContent = money(t);
         }
+
         var tabla = el("table",{class:"table table-sm align-middle"});
         tabla.appendChild(el("thead",{},[ el("tr",{},[
           el("th",{},["Insumo"]), el("th",{class:"text-end"},["Existencia"]),
-          el("th",{class:"text-end"},["Cantidad a comprar"]), el("th",{class:"text-end"},["Presentación"]), el("th",{class:"text-end"},["Costo estimado (USD)"])
+          el("th",{class:"text-end"},["Cantidad a comprar"]), el("th",{class:"text-end"},["Costo estimado (USD)"])
         ]) ]));
         var tbody = el("tbody");
         visibles.forEach(function(x){
@@ -1869,23 +1897,23 @@
           var existTxt = num2(cc.existenciaProyectada) + " " + (x.unidad||"") + (dias==null ? "" : " (" + num2(dias) + " días)");
           var inp = inputNumero("lcq_"+x.id, estado.qty[x.id], {min:0, allowNegatives:false, decimals:2});
           var costoCell = el("td",{class:"text-end"},[ money(costoDe(x, estado.qty[x.id])) ]);
-          var presCell = el("td",{class:"text-end text-muted"},[ presTexto(x, estado.qty[x.id]) ]);
           inp.addEventListener("change", function(){
             estado.qty[x.id] = readNumero("lcq_"+x.id);
             costoCell.textContent = money(costoDe(x, estado.qty[x.id]));
-            presCell.textContent = presTexto(x, estado.qty[x.id]);
             recalcTotal();
           });
           var tdCant = el("td",{class:"text-end"}); tdCant.appendChild(inp);
-          tbody.appendChild(el("tr",{},[ el("td",{},[x.nombre]), el("td",{class:"text-end"},[existTxt]), tdCant, presCell, costoCell ]));
+          tbody.appendChild(el("tr",{},[ el("td",{},[x.nombre]), el("td",{class:"text-end"},[existTxt]), tdCant, costoCell ]));
         });
         tabla.appendChild(tbody);
         tabla.appendChild(el("tfoot",{},[ el("tr",{},[
-          el("td",{colspan:"4",class:"text-end fw-bold"},["Total general"]), totalCell
+          el("td",{colspan:"3",class:"text-end fw-bold"},["Total general"]), totalCell
         ]) ]));
         c.appendChild(tabla);
         recalcTotal();
       }
+
+      // ================= INVENTARIO FÍSICO =================
       function viewInventario(c){
         if (APP.invInsumoId){ formInventario(c, findById("Insumo", APP.invInsumoId)); return; }
         h(c, "Inventario físico");
@@ -1957,6 +1985,7 @@
         frm2.appendChild(colf(campo("Consumo diario a aplicar", inputNumero("invConsumo", ins.consumoDiario||0, {min:0, decimals:4, allowNegatives:false}))));
         c.appendChild(frm2);
         c.appendChild(el("p",{class:"text-small text-muted"},["El consumo propuesto se calcula como (existencia del sistema − contada) ÷ días transcurridos desde el último inventario. Puedes ajustarlo antes de guardar."]));
+
         function recalcular(){
           var fecha = readVal("invFecha");
           var contada = readNumero("invContada");
@@ -1973,6 +2002,7 @@
         byId("invFecha").addEventListener("change", recalcular);
         byId("invContada").addEventListener("change", recalcular);
         recalcular();
+
         var acciones = el("div",{class:"d-flex gap-2 mt-2"});
         var save = el("button",{class:"btn btn-success",type:"button"},["Guardar inventario"]);
         save.disabled = readOnly();
@@ -1995,10 +2025,12 @@
         acciones.appendChild(save); acciones.appendChild(cancel);
         c.appendChild(acciones);
       }
+
+      // ================= REPORTES (13 meses) =================
       function ultimosMeses(n){
         var out = [], d = parseLocal(todayISO());
         for (var i=0;i<n;i++){ var m=String(d.getMonth()+1).padStart(2,"0"); out.push(d.getFullYear()+"-"+m); d.setMonth(d.getMonth()-1); }
-        return out;
+        return out; // más reciente primero
       }
       function datosReporte(){
         var meses = ultimosMeses(13);
@@ -2027,6 +2059,8 @@
         var rep = datosReporte();
         if (!rep.items.length){ c.appendChild(el("p",{class:"text-muted"},["Aún no hay facturas registradas en los últimos 13 meses."])); return; }
         if (!APP.repMes) APP.repMes = "ALL";
+
+        // Gasto por mes (todas las facturas, no depende del filtro)
         c.appendChild(el("h2",{class:"h5"},["Gasto por mes (USD)"]));
         var porMes = rep.meses.map(function(m){
           var tot = rep.items.filter(function(it){ return it.mes===m; }).reduce(function(s,it){ return s+it.usd; },0);
@@ -2045,6 +2079,8 @@
           barWrap.appendChild(row);
         });
         c.appendChild(barWrap);
+
+        // Filtro de mes para los desgloses
         var filtRow = el("div",{class:"d-flex align-items-end gap-2 mb-2 flex-wrap"});
         var opts = [{value:"ALL",label:"Todos (13 meses)"}].concat(rep.meses.map(function(m){ return {value:m,label:m}; }));
         var sel = selectField("repMes", opts, APP.repMes);
@@ -2053,9 +2089,11 @@
         var lbl = el("div",{},[ el("label",{class:"form-label mb-1"},["Desglose del período"]), sel ]);
         filtRow.appendChild(lbl);
         c.appendChild(filtRow);
+
         var items = APP.repMes==="ALL" ? rep.items : rep.items.filter(function(it){ return it.mes===APP.repMes; });
         var totalPer = items.reduce(function(s,it){ return s+it.usd; },0);
         c.appendChild(el("div",{class:"alert alert-info"},["Gasto total del período seleccionado: "+money(totalPer)]));
+
         function tablaAgrupada(titulo, etiqueta, filas){
           c.appendChild(el("h2",{class:"h6 mt-3"},[titulo]));
           if(!filas.length){ c.appendChild(el("p",{class:"text-muted"},["Sin datos."])); return; }
@@ -2066,6 +2104,7 @@
         tablaAgrupada("Por insumo / servicio", "Insumo/Servicio", agrupar(items, function(it){ return it.refNombre+" ("+it.tipo+")"; }));
         tablaAgrupada("Por proveedor", "Proveedor", agrupar(items, function(it){ return it.proveedor; }));
       }
+
     });
   }
   </script>
