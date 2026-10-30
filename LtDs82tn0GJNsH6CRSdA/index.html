@@ -279,9 +279,52 @@
         var minDias = Number(ins.stockMinimoDias) || 0;
         var cicloDias = Number(ins.diasCompra) || 0;
         var objetivo = cd * (cicloDias + minDias);
-        var sugerida = Math.max(0, Math.ceil(objetivo - proy));
-        if (!isFinite(sugerida)) sugerida = 0;
-        return { diasExistencia: dias, existenciaProyectada: proy, diasProyectados: diasProy, consumoMensual: cd * 30, costoMesUSD: costoMes, fechaAgote: fechaAgote, cantidadSugerida: sugerida, transcurridos: transc };
+        var sugeridaBruta = Math.max(0, Math.ceil(objetivo - proy));
+        if (!isFinite(sugeridaBruta)) sugeridaBruta = 0;
+        var sugerida = redondearPresentacion(sugeridaBruta, ins);
+        var stockMinU = cd * minDias;                    // punto de reorden (unidades)
+        var enReorden = (cd > 0) && (proy <= stockMinU); // alcanzó el punto de reorden
+        return { diasExistencia: dias, existenciaProyectada: proy, diasProyectados: diasProy, consumoMensual: cd * 30, costoMesUSD: costoMes, fechaAgote: fechaAgote, cantidadSugerida: sugerida, cantidadSugeridaBruta: sugeridaBruta, enReorden: enReorden, transcurridos: transc };
+      }
+      // ---------- Presentación (unidad de empaque) y semáforo de stock ----------
+      function presUnid(ins){ var p = Number(ins.unidadesPorPresentacion)||0; return p>0 ? p : 0; }
+      function redondearPresentacion(cant, ins){
+        var p = presUnid(ins);
+        var q = Number(cant)||0; if (q<0) q=0;
+        if (p>0) q = Math.ceil(q/p)*p;
+        return q;
+      }
+      function pluralPres(ins, n){
+        var base = (ins.nombrePresentacion||"").trim();
+        if (!base) return "";
+        if (Math.abs(n)===1) return base;
+        if (/[aeiouáéíóú]$/i.test(base)) return base+"s";
+        if (/z$/i.test(base)) return base.slice(0,-1)+"ces";
+        return base+"es";
+      }
+      function textoCompra(ins, cant){
+        var u = ins.unidad||"u";
+        var txt = num2(cant)+" "+u;
+        var p = presUnid(ins);
+        if (p>0){ var np = cant/p; txt += " ("+num2(np)+" "+pluralPres(ins, np)+")"; }
+        return txt;
+      }
+      function presTexto(ins, cant){
+        var p = presUnid(ins);
+        if (p<=0) return "—";
+        var np = (Number(cant)||0)/p;
+        return num2(np)+" "+pluralPres(ins, np);
+      }
+      function stockMaxDias(ins){ return (Number(ins.stockMinimoDias)||0) + (Number(ins.diasCompra)||0); }
+      function estadoStock(ins){
+        var cc = calcInsumo(ins);
+        var cd = Number(ins.consumoDiario)||0;
+        if (cd<=0 || cc.diasProyectados==null) return "neutro";
+        var min = Number(ins.stockMinimoDias)||0;
+        var max = stockMaxDias(ins);
+        if (cc.diasProyectados <= min) return "danger";
+        if (cc.diasProyectados <= max) return "success";
+        return "warning";
       }
       function enAlerta(ins){
         var cc = calcInsumo(ins);
@@ -410,16 +453,16 @@
       // ---------- Tabla de datos ----------
       function mountTable(container, columns, data, alClicFila, opts){
         opts = opts || {};
-        var t = document.createElement("data-table");
+        var t = document.createElement("table-date");
         t.setAttribute("sortable", "");
         t.setAttribute("filterable", "");
-        t.setAttribute("paginate", "");
+        t.setAttribute("paginated", "");
         t.setAttribute("page-size", String(opts.pageSize || 15));
         if (opts.exportable !== false) t.setAttribute("exportable", "");
         container.appendChild(t);
         t.columns = columns;
         t.data = data;
-        if (alClicFila) t.addEventListener("row-click", function(ev){
+        if (alClicFila) t.addEventListener("rowclick", function(ev){
           var d = ev && ev.detail ? ev.detail : {};
           var row = d.row || d.item || d.data || d;
           alClicFila(row);
@@ -591,6 +634,8 @@
         frm.appendChild(planCol);
         frm.appendChild(colf(campo("Stock mínimo (días)", inputNumero("insMinDias", ins?ins.stockMinimoDias:0, {min:0, allowNegatives:false, decimals:0}))));
         frm.appendChild(colf(campo("Compro cada (días)", inputNumero("insDiasCompra", ins?ins.diasCompra:0, {min:0, allowNegatives:false, decimals:0}))));
+        frm.appendChild(colf(campo("Unidades por presentación", inputNumero("insPresUnid", ins?ins.unidadesPorPresentacion:0, {min:0, allowNegatives:false, decimals:0}))));
+        frm.appendChild(colf(campo("Nombre de la presentación (singular)", inputText("insPresNombre", ins?(ins.nombrePresentacion||""):"", {placeholder:"Ej.: caja, blíster, frasco"}))));
         frm.appendChild(colf(campo("Fecha último inventario", inputFecha("insFecha", ins?ins.fechaUltimoInventario:todayISO()))));
         var aliasCol = el("div",{class:"col-12 col-md-8"});
         aliasCol.appendChild(campo("Otros nombres / marcas (separados por coma)", inputText("insAlias", (ins?aliasList(ins).join(", "):""), {placeholder:"Ej.: Aceite Marca X, Aceite 1L"})));
@@ -781,6 +826,7 @@
             existencia:readNumero("insExist"), consumoDiario:consDiario, consumoMetodo:consMetodo, consumoValor:consValor, consumoDiasUnidad:consDiasU,
             llevaPlan:llevaPlan, plan:planGuardar,
             stockMinimoDias:readNumero("insMinDias"), diasCompra:readNumero("insDiasCompra"),
+            unidadesPorPresentacion:readNumero("insPresUnid"), nombrePresentacion:readVal("insPresNombre").trim(),
             fechaUltimoInventario:readVal("insFecha"),
             alias: readVal("insAlias").split(",").map(function(s){ return s.trim(); }).filter(Boolean),
             esGeneral: !!(byId("insGeneral") && byId("insGeneral").checked) };
@@ -836,7 +882,8 @@
         cards.appendChild(card("último proveedor", ins.ultimoProveedor||"—"));
         cards.appendChild(card("Stock mínimo (días)", num2(ins.stockMinimoDias)));
         cards.appendChild(card("Compro cada (días)", num2(ins.diasCompra)));
-        cards.appendChild(card("Cantidad sugerida a comprar", num2(cc.cantidadSugerida)));
+        cards.appendChild(card("Presentación", presUnid(ins)>0 ? (num2(presUnid(ins))+" "+(ins.unidad||"u")+" / "+(ins.nombrePresentacion||"—")) : "—"));
+        cards.appendChild(card("Cantidad sugerida a comprar", cc.cantidadSugerida>0 ? textoCompra(ins, cc.cantidadSugerida) : "0"));
         cards.appendChild(card("último inventario", ins.fechaUltimoInventario||"—"));
         c.appendChild(cards);
         if (enAlerta(ins)) c.appendChild(el("div",{class:"alert alert-warning"},["⚠ Los días de existencia proyectada están por debajo del stock mínimo en días."]));
@@ -1602,7 +1649,7 @@
           var l = lineas[i++];
           if (l.refId!=="__nuevo__") return next();
           var base = { nombre:(l.nuevoNombre||"").trim(), categoria:"", descripcion:"", ultimoProveedor:"", ultimoCostoUSD:0 };
-          if (ent==="Insumo"){ base.unidad=l.unidad||""; base.existencia=0; base.consumoDiario=0; base.consumoMetodo="directo"; base.consumoValor=0; base.consumoDiasUnidad=0; base.stockMinimoDias=0; base.diasCompra=0; base.ultCompraCostoUSD=0; base.ultCompraCantidad=0; base.fechaUltimoInventario=APP.facturaDraft.fecha; base.alias=[]; base.esGeneral=false; base.llevaPlan=false; base.plan=[]; }
+          if (ent==="Insumo"){ base.unidad=l.unidad||""; base.existencia=0; base.consumoDiario=0; base.consumoMetodo="directo"; base.consumoValor=0; base.consumoDiasUnidad=0; base.stockMinimoDias=0; base.diasCompra=0; base.unidadesPorPresentacion=0; base.nombrePresentacion=""; base.ultCompraCostoUSD=0; base.ultCompraCantidad=0; base.fechaUltimoInventario=APP.facturaDraft.fecha; base.alias=[]; base.esGeneral=false; base.llevaPlan=false; base.plan=[]; }
           return sdAdd(ent, base).then(function(res){ l.refId = idOf(res); return next(); });
         }
         return next();
@@ -1779,7 +1826,7 @@
         })();
 
         if (!APP.tableroFiltro) APP.tableroFiltro = "alerta";
-        var pendientes = insumos.filter(function(x){ return calcInsumo(x).cantidadSugerida > 0; });
+        var pendientes = insumos.filter(function(x){ return calcInsumo(x).enReorden; });
 
         c.appendChild(el("h2",{class:"h5"},["Insumos"]));
 
@@ -1836,18 +1883,18 @@
             track.appendChild(el("div",{class:"bg-success",style:"width:100%;height:18px"},[]));
           } else {
             var redD = Math.min(r.dias, r.stockMin);
-            var yelD = Math.min(Math.max(0, r.dias - r.stockMin), r.ciclo);
-            var grnD = Math.max(0, r.dias - r.stockMin - r.ciclo);
+            var grnD = Math.min(Math.max(0, r.dias - r.stockMin), r.ciclo);
+            var yelD = Math.max(0, r.dias - r.stockMin - r.ciclo);
             seg("bg-danger", redD);
-            seg("bg-warning", yelD);
             seg("bg-success", grnD);
+            seg("bg-warning", yelD);
           }
           barWrap.appendChild(track);
 
           var partes = [];
           partes.push((r.dias==null ? "∞" : num2(r.dias)) + " días restantes");
           if (r.dias!=null && r.cc.fechaAgote) partes.push("se agota ~ "+fmtCorta(r.cc.fechaAgote));
-          if (r.cc.cantidadSugerida > 0) partes.push("comprar "+num2(r.cc.cantidadSugerida)+" "+(r.ins.unidad||"u"));
+          if (r.cc.cantidadSugerida > 0) partes.push("comprar "+textoCompra(r.ins, r.cc.cantidadSugerida));
           barWrap.appendChild(el("div",{class:"text-small text-muted mt-1"},[partes.join(" · ")]));
 
           fila.appendChild(barWrap);
@@ -1859,28 +1906,57 @@
       // ================= LISTA DE COMPRAS =================
       function viewListaCompras(c){
         var insumos = get("Insumo");
-        if (APP.listaCompras == null){ APP.listaCompras = { qty:null, solo:false, diasAdic:0 }; }
+        if (APP.listaCompras == null){ APP.listaCompras = { qty:null, solo:false, diasAdic:0, especial:false, fechaCierre:todayISO(), diasCierre:0 }; }
         var estado = APP.listaCompras;
+        function diasACubrirEspecial(){
+          var n = Math.max(0, Number(estado.diasCierre)||0);
+          var extra = estado.fechaCierre ? Math.max(0, daysBetween(todayISO(), estado.fechaCierre)) : 0;
+          return extra + n;
+        }
         function sugerida(ins){
           var cc = calcInsumo(ins);
           var cd = Number(ins.consumoDiario)||0;
-          var objetivo = cd * ((Number(ins.diasCompra)||0) + (Number(ins.stockMinimoDias)||0) + (Number(estado.diasAdic)||0));
+          var min = Number(ins.stockMinimoDias)||0;
+          var diasObjetivo = estado.especial
+            ? (diasACubrirEspecial() + min)
+            : ((Number(ins.diasCompra)||0) + min + (Number(estado.diasAdic)||0));
+          var objetivo = cd * diasObjetivo;
           var s = Math.max(0, Math.ceil(objetivo - cc.existenciaProyectada));
-          return isFinite(s) ? s : 0;
+          if (!isFinite(s)) s = 0;
+          return redondearPresentacion(s, ins);
         }
-        if (estado.qty == null){ estado.qty = {}; insumos.forEach(function(x){ estado.qty[x.id] = sugerida(x); }); }
+        function recomputar(){ estado.qty = {}; insumos.forEach(function(x){ estado.qty[x.id] = sugerida(x); }); }
+        if (estado.qty == null){ recomputar(); }
 
         var acciones = el("div",{class:"d-flex align-items-center gap-3 flex-wrap no-print"});
-        var adicWrap = el("div",{class:"d-flex align-items-center gap-2"});
-        adicWrap.appendChild(el("label",{class:"form-label mb-0","for":"lcAdic"},["Días adicionales"]));
-        var adicInp = el("input",{id:"lcAdic",type:"number",min:"0",step:"1",class:"form-control form-control-sm",style:"width:90px",value:String(estado.diasAdic||0)});
-        adicInp.addEventListener("change", function(){
-          estado.diasAdic = Math.max(0, Number(adicInp.value)||0);
-          estado.qty = {}; insumos.forEach(function(x){ estado.qty[x.id] = sugerida(x); });
-          render();
-        });
-        adicWrap.appendChild(adicInp);
-        acciones.appendChild(adicWrap);
+        var espWrap = el("div",{class:"form-check mb-0"});
+        var espChk = el("input",{class:"form-check-input",type:"checkbox",id:"lcEsp"});
+        espChk.checked = !!estado.especial;
+        espChk.addEventListener("change", function(){ estado.especial = espChk.checked; recomputar(); render(); });
+        espWrap.appendChild(espChk);
+        espWrap.appendChild(el("label",{class:"form-check-label","for":"lcEsp"},["Compra especial (no podré comprar por un tiempo)"]));
+        acciones.appendChild(espWrap);
+        if (estado.especial){
+          var fWrap = el("div",{class:"d-flex align-items-center gap-2"});
+          fWrap.appendChild(el("label",{class:"form-label mb-0","for":"lcFecha"},["No puedo comprar desde"]));
+          var fInp = el("input",{id:"lcFecha",type:"date",class:"form-control form-control-sm",style:"width:160px",value:estado.fechaCierre||todayISO()});
+          fInp.addEventListener("change", function(){ estado.fechaCierre = fInp.value||todayISO(); recomputar(); render(); });
+          fWrap.appendChild(fInp);
+          acciones.appendChild(fWrap);
+          var nWrap = el("div",{class:"d-flex align-items-center gap-2"});
+          nWrap.appendChild(el("label",{class:"form-label mb-0","for":"lcDiasCierre"},["durante (días)"]));
+          var nInp = el("input",{id:"lcDiasCierre",type:"number",min:"0",step:"1",class:"form-control form-control-sm",style:"width:90px",value:String(estado.diasCierre||0)});
+          nInp.addEventListener("change", function(){ estado.diasCierre = Math.max(0, Number(nInp.value)||0); recomputar(); render(); });
+          nWrap.appendChild(nInp);
+          acciones.appendChild(nWrap);
+        } else {
+          var adicWrap = el("div",{class:"d-flex align-items-center gap-2"});
+          adicWrap.appendChild(el("label",{class:"form-label mb-0","for":"lcAdic"},["Días adicionales"]));
+          var adicInp = el("input",{id:"lcAdic",type:"number",min:"0",step:"1",class:"form-control form-control-sm",style:"width:90px",value:String(estado.diasAdic||0)});
+          adicInp.addEventListener("change", function(){ estado.diasAdic = Math.max(0, Number(adicInp.value)||0); recomputar(); render(); });
+          adicWrap.appendChild(adicInp);
+          acciones.appendChild(adicWrap);
+        }
         var chkWrap = el("div",{class:"form-check mb-0"});
         var chk = el("input",{class:"form-check-input",type:"checkbox",id:"lcSolo"});
         chk.checked = !!estado.solo;
@@ -1893,7 +1969,11 @@
         acciones.appendChild(btnPrint);
         h(c, "Lista de compras", acciones);
 
-        c.appendChild(el("p",{class:"text-muted text-small no-print"},["Propuesta calculada por la app. Usa 'Días adicionales' para sumar cobertura extra a todos los insumos (recalcula toda la lista). Luego ajusta las cantidades a comprar según necesites (presentación de venta, compra adicional, etc.). Nada de esto se guarda."]));
+        if (estado.especial){
+          c.appendChild(el("p",{class:"text-muted text-small no-print"},["Compra especial: se calcula cuánto comprar HOY para cubrir desde hoy hasta el final del cierre ("+num2(diasACubrirEspecial())+" días en total) más el stock mínimo, redondeado a la presentación. Nada de esto se guarda."]));
+        } else {
+          c.appendChild(el("p",{class:"text-muted text-small no-print"},["Propuesta calculada por la app. Usa 'Días adicionales' para sumar cobertura extra a todos los insumos. Las cantidades se redondean a la presentación de compra. Nada de esto se guarda."]));
+        }
 
         if (!insumos.length){ c.appendChild(el("p",{class:"text-muted"},["Aún no hay insumos."])); return; }
 
@@ -1913,7 +1993,7 @@
         var tabla = el("table",{class:"table table-sm align-middle"});
         tabla.appendChild(el("thead",{},[ el("tr",{},[
           el("th",{},["Insumo"]), el("th",{class:"text-end"},["Existencia"]),
-          el("th",{class:"text-end"},["Cantidad a comprar"]), el("th",{class:"text-end"},["Costo estimado (USD)"])
+          el("th",{class:"text-end"},["Cantidad a comprar"]), el("th",{class:"text-end"},["Presentación"]), el("th",{class:"text-end"},["Costo estimado (USD)"])
         ]) ]));
         var tbody = el("tbody");
         visibles.forEach(function(x){
@@ -1922,17 +2002,19 @@
           var existTxt = num2(cc.existenciaProyectada) + " " + (x.unidad||"") + (dias==null ? "" : " (" + num2(dias) + " días)");
           var inp = inputNumero("lcq_"+x.id, estado.qty[x.id], {min:0, allowNegatives:false, decimals:2});
           var costoCell = el("td",{class:"text-end"},[ money(costoDe(x, estado.qty[x.id])) ]);
+          var presCell = el("td",{class:"text-end text-muted"},[ presTexto(x, estado.qty[x.id]) ]);
           inp.addEventListener("change", function(){
             estado.qty[x.id] = readNumero("lcq_"+x.id);
             costoCell.textContent = money(costoDe(x, estado.qty[x.id]));
+            presCell.textContent = presTexto(x, estado.qty[x.id]);
             recalcTotal();
           });
           var tdCant = el("td",{class:"text-end"}); tdCant.appendChild(inp);
-          tbody.appendChild(el("tr",{},[ el("td",{},[x.nombre]), el("td",{class:"text-end"},[existTxt]), tdCant, costoCell ]));
+          tbody.appendChild(el("tr",{},[ el("td",{},[x.nombre]), el("td",{class:"text-end"},[existTxt]), tdCant, presCell, costoCell ]));
         });
         tabla.appendChild(tbody);
         tabla.appendChild(el("tfoot",{},[ el("tr",{},[
-          el("td",{colspan:"3",class:"text-end fw-bold"},["Total general"]), totalCell
+          el("td",{colspan:"4",class:"text-end fw-bold"},["Total general"]), totalCell
         ]) ]));
         c.appendChild(tabla);
         recalcTotal();
