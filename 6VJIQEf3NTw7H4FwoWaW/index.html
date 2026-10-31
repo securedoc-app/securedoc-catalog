@@ -1687,7 +1687,9 @@
           c.appendChild(btnRec);
         })();
         if (!APP.tableroFiltro) APP.tableroFiltro = "alerta";
-        var pendientes = insumos.filter(function(x){ return calcInsumo(x).enReorden; });
+        // "Pendiente por Comprar" ahora reconcilia con la Lista de Compras: insumos con cantidad sugerida > 0
+        // (cubrir días de compra + stock mínimo), no solo los que ya cayeron bajo el mínimo.
+        var pendientes = insumos.filter(function(x){ return calcInsumo(x).cantidadSugerida > 0; });
         c.appendChild(el("h2",{class:"h5"},["Insumos"]));
         var MESES = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
         function fmtCorta(iso){ if(!iso) return "—"; var dd=parseLocal(iso); if(!dd||isNaN(dd.getTime())) return iso; return (dd.getDate()<10?"0":"")+dd.getDate()+" "+MESES[dd.getMonth()]; }
@@ -1822,6 +1824,7 @@
         } else {
           c.appendChild(el("p",{class:"text-muted text-small no-print"},["Propuesta calculada por la app. Usa 'Días adicionales' para sumar cobertura extra a todos los insumos. Las cantidades se redondean a la presentación de compra. Nada de esto se guarda."]));
         }
+        c.appendChild(el("p",{class:"text-small mb-2"},[ "Los insumos resaltados en rojo con la etiqueta ", el("span",{class:"badge bg-danger"},["Bajo mínimo"]), " ya están por debajo del stock mínimo (compra urgente)." ]));
         if (!insumos.length){ c.appendChild(el("p",{class:"text-muted"},["Aún no hay insumos."])); return; }
         var visibles = insumos.slice().sort(function(a,b){ return a.nombre.localeCompare(b.nombre); });
         if (estado.solo) visibles = visibles.filter(function(x){ return (Number(estado.qty[x.id])||0) > 0; });
@@ -1853,7 +1856,11 @@
             recalcTotal();
           });
           var tdCant = el("td",{class:"text-end"}); tdCant.appendChild(inp);
-          tbody.appendChild(el("tr",{},[ el("td",{},[x.nombre]), el("td",{class:"text-end"},[existTxt]), tdCant, presCell, costoCell ]));
+          var bajoMin = enAlerta(x);
+          var nombreCell = el("td",{});
+          nombreCell.appendChild(document.createTextNode(x.nombre||""));
+          if (bajoMin) nombreCell.appendChild(el("span",{class:"badge bg-danger ms-2"},["Bajo mínimo"]));
+          tbody.appendChild(el("tr", bajoMin ? {class:"table-danger"} : {}, [ nombreCell, el("td",{class:"text-end"},[existTxt]), tdCant, presCell, costoCell ]));
         });
         tabla.appendChild(tbody);
         tabla.appendChild(el("tfoot",{},[ el("tr",{},[
