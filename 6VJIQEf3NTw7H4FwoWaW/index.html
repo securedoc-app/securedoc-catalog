@@ -514,10 +514,8 @@
             UltProveedor:x.ultimoProveedor||"", UltCostoUSD:num2(x.ultimoCostoUSD),
             CostoMesUSD:num2(cc.costoMesUSD), Alerta: enAlerta(x)?"⚠":"" };
         }).sort(function(a,b){ return a.Nombre.localeCompare(b.Nombre); });
-        var cols = [ {key:"Alerta",label:""},{key:"Nombre",label:"Nombre"},{key:"Unidad",label:"Unidad"},{key:"Categoría",label:"Categoría"},
-          {key:"Existencia",label:"Existencia"},{key:"ConsumoDiario",label:"Cons./día"},{key:"Días",label:"Días exist."},
-          {key:"Proyectada",label:"Proyectada"},{key:"StockMín",label:"Stock mín (días)"},{key:"CompraCada",label:"Compro cada (días)"},{key:"UltProveedor",label:"Últ. proveedor"},
-          {key:"UltCostoUSD",label:"Últ. costo"},{key:"CostoMesUSD",label:"Costo mes"} ];
+        var cols = [ {key:"Nombre",label:"Nombre"},{key:"Unidad",label:"Unidad"},{key:"Categoría",label:"Categoría"},
+          {key:"Existencia",label:"Existencia"} ];
         if (!rows.length){ c.appendChild(el("p",{class:"text-muted"},["Aún no hay insumos."])); return; }
         mountTable(c, cols, rows, function(row){ APP.detalleInsumoId = row.id; render(); });
       }
