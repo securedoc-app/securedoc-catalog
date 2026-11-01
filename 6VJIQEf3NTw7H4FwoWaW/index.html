@@ -1837,7 +1837,7 @@
           var p3 = String(todayISO()||"").split("-");
           var fechaTxt = (p3.length===3) ? (p3[2]+"/"+p3[1]+"/"+p3[0]) : todayISO();
           var lineas = ["\ud83d\uded2 Lista de compras \u2014 "+fechaTxt, ""];
-          var total = 0, algo = false;
+          var total = 0, algo = false, hayBajo = false;
           var items = insumos.slice().sort(function(a,b){ return (a.nombre||"").localeCompare(b.nombre||""); });
           items.forEach(function(x){
             var cant = Number(estado.qty[x.id])||0;
@@ -1849,10 +1849,15 @@
             if (p > 0){ var np = cant/p; cuerpo = num2(np)+" "+pluralPres(x, np)+" ("+num2(cant)+" "+u+")"; }
             else { cuerpo = num2(cant)+" "+u; }
             var c = costoDe(x, cant); total += c;
-            lineas.push("\u2022 "+(x.nombre||"")+" \u2014 "+cuerpo+" \u2014 "+money(c));
+            var renglon = "\u2022 "+(x.nombre||"")+" \u2014 "+cuerpo+" \u2014 "+money(c);
+            if (enAlerta(x)){ hayBajo = true; renglon = "*"+renglon+"*"; }
+            lineas.push(renglon);
           });
           if (!algo){ lineas.push("(No hay insumos por comprar)"); }
-          else { lineas.push(""); lineas.push("Total estimado: "+money(total)); }
+          else {
+            lineas.push(""); lineas.push("Total estimado: "+money(total));
+            if (hayBajo){ lineas.push(""); lineas.push("\u26a0\ufe0f Los renglones resaltados en *negrita* tienen existencias muy bajas, por debajo del stock m\u00ednimo."); }
+          }
           return lineas.join("\n");
         }
         var totalCell = el("td",{class:"text-end fw-bold"},[money(0)]);
